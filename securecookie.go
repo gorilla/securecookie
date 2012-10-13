@@ -363,12 +363,15 @@ func CodecsFromPairs(keyPairs ...[]byte) []Codec {
 // key rotation.
 func EncodeMulti(name string, value interface{},
 	codecs ...Codec) (string, error) {
+	var errors MultiError
 	for _, codec := range codecs {
 		if encoded, err := codec.Encode(name, value); err == nil {
 			return encoded, nil
+		} else {
+			errors = append(errors, err)
 		}
 	}
-	return "", errors.New("securecookie: the value could not be encoded")
+	return "", errors
 }
 
 // DecodeMulti decodes a cookie value using a group of codecs.
@@ -377,10 +380,34 @@ func EncodeMulti(name string, value interface{},
 // key rotation.
 func DecodeMulti(name string, value string, dst interface{},
 	codecs ...Codec) error {
+	var errors MultiError
 	for _, codec := range codecs {
 		if err := codec.Decode(name, value, dst); err == nil {
 			return nil
+		} else {
+			errors = append(errors, err)
 		}
 	}
-	return errors.New("securecookie: the value could not be decoded")
+	return errors
+}
+
+// MultiError groups multiple errors.
+type MultiError []error
+
+func (m MultiError) Error() string {
+	s := ""
+	for k, v := range m {
+		if v != nil && k == 0 {
+			s = v.Error()
+		}
+	}
+	switch len(m) {
+	case 0:
+		return "(0 errors)"
+	case 1:
+		return s
+	case 2:
+		return s + " (and 1 other error)"
+	}
+	return fmt.Sprintf("%s (and %d other errors)", s, len(m)-1)
 }

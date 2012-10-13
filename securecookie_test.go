@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -127,6 +128,18 @@ func TestEncoding(t *testing.T) {
 			t.Error(err)
 		} else if string(decoded) != value {
 			t.Errorf("Expected %v, got %s.", value, string(decoded))
+		}
+	}
+}
+
+func TestMultiError(t *testing.T) {
+	s1, s2 := New(nil, nil), New(nil, nil)
+	_, err := EncodeMulti("sid", "value", s1, s2)
+	if len(err.(MultiError)) != 2 {
+		t.Errorf("Expected 2 errors, got %s.", err)
+	} else {
+		if strings.Index(err.Error(), "hash key is not set") == -1 {
+			t.Errorf("Expected missing hash key error, got %s.", err.Error())
 		}
 	}
 }
