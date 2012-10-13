@@ -395,13 +395,16 @@ func DecodeMulti(name string, value string, dst interface{},
 type MultiError []error
 
 func (m MultiError) Error() string {
-	s := ""
-	for k, v := range m {
-		if v != nil && k == 0 {
-			s = v.Error()
+	s, n := "", 0
+	for _, e := range m {
+		if e != nil {
+			if n == 0 {
+				s = e.Error()
+			}
+			n++
 		}
 	}
-	switch len(m) {
+	switch n {
 	case 0:
 		return "(0 errors)"
 	case 1:
@@ -409,5 +412,5 @@ func (m MultiError) Error() string {
 	case 2:
 		return s + " (and 1 other error)"
 	}
-	return fmt.Sprintf("%s (and %d other errors)", s, len(m)-1)
+	return fmt.Sprintf("%s (and %d other errors)", s, n-1)
 }
