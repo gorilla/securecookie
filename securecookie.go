@@ -118,8 +118,8 @@ func (s *SecureCookie) BlockFunc(f func([]byte) (cipher.Block, error)) *SecureCo
 
 // Encode encodes a cookie value.
 //
-// It decodes, verifies a message authentication code, optionally decrypts and
-// finally deserializes the value.
+// It serializes, optionally encrypts, signs with a message authentication code, and
+// finally encodes the value.
 //
 // The name argument is the cookie name. It is stored with the encoded value.
 // The value argument is the value to be encoded. It can be any value that can
