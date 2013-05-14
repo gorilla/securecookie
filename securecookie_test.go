@@ -39,7 +39,7 @@ func TestSecureCookie(t *testing.T) {
 	s2 := New([]byte("54321"), []byte("6543210987654321"))
 	value := map[string]interface{}{
 		"foo": "bar",
-		"baz": 128,
+		"baz": 128.5,
 	}
 
 	for i := 0; i < 50; i++ {
