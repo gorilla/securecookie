@@ -13,7 +13,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -123,8 +123,7 @@ func (s *SecureCookie) BlockFunc(f func([]byte) (cipher.Block, error)) *SecureCo
 //
 // The name argument is the cookie name. It is stored with the encoded value.
 // The value argument is the value to be encoded. It can be any value that can
-// be encoded using encoding/gob. To store special structures, they must be
-// registered first using gob.Register().
+// be encoded using encoding/json.
 func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	if s.err != nil {
 		return "", s.err
@@ -293,19 +292,19 @@ func decrypt(block cipher.Block, value []byte) ([]byte, error) {
 
 // Serialization --------------------------------------------------------------
 
-// serialize encodes a value using gob.
+// serialize encodes a value using json.
 func serialize(src interface{}) ([]byte, error) {
 	buf := new(bytes.Buffer)
-	enc := gob.NewEncoder(buf)
+	enc := json.NewEncoder(buf)
 	if err := enc.Encode(src); err != nil {
 		return nil, err
 	}
 	return buf.Bytes(), nil
 }
 
-// deserialize decodes a value using gob.
+// deserialize decodes a value using json.
 func deserialize(src []byte, dst interface{}) error {
-	dec := gob.NewDecoder(bytes.NewBuffer(src))
+	dec := json.NewDecoder(bytes.NewBuffer(src))
 	if err := dec.Decode(dst); err != nil {
 		return err
 	}
