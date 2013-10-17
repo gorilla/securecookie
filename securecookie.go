@@ -357,12 +357,17 @@ func CodecsFromPairs(keyPairs ...[]byte) []Codec {
 	return codecs
 }
 
+var errNoCodecs = errors.New("securecookie: no codecs provided")
+
 // EncodeMulti encodes a cookie value using a group of codecs.
 //
 // The codecs are tried in order. Multiple codecs are accepted to allow
 // key rotation.
-func EncodeMulti(name string, value interface{},
-	codecs ...Codec) (string, error) {
+func EncodeMulti(name string, value interface{}, codecs ...Codec) (string, error) {
+	if len(codecs) == 0 {
+		return "", errNoCodecs
+	}
+
 	var errors MultiError
 	for _, codec := range codecs {
 		if encoded, err := codec.Encode(name, value); err == nil {
@@ -378,8 +383,11 @@ func EncodeMulti(name string, value interface{},
 //
 // The codecs are tried in order. Multiple codecs are accepted to allow
 // key rotation.
-func DecodeMulti(name string, value string, dst interface{},
-	codecs ...Codec) error {
+func DecodeMulti(name string, value string, dst interface{}, codecs ...Codec) error {
+	if len(codecs) == 0 {
+		return errNoCodecs
+	}
+
 	var errors MultiError
 	for _, codec := range codecs {
 		if err := codec.Decode(name, value, dst); err == nil {

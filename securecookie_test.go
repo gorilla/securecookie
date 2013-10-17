@@ -144,6 +144,19 @@ func TestMultiError(t *testing.T) {
 	}
 }
 
+func TestMultiNoCodecs(t *testing.T) {
+	_, err := EncodeMulti("foo", "bar")
+	if err != errNoCodecs {
+		t.Errorf("EncodeMulti: bad value for error, got: %v", err)
+	}
+
+	var dst []byte
+	err = DecodeMulti("foo", "bar", &dst)
+	if err != errNoCodecs {
+		t.Errorf("DecodeMulti: bad value for error, got: %v", err)
+	}
+}
+
 // ----------------------------------------------------------------------------
 
 type FooBar struct {
