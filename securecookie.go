@@ -22,6 +22,11 @@ import (
 	"time"
 )
 
+var (
+	errNoCodecs      = errors.New("securecookie: no codecs provided")
+	errHashKeyNotSet = errors.New("securecookie: hash key is not set")
+)
+
 // Codec defines an interface to encode and decode cookie values.
 type Codec interface {
 	Encode(name string, value interface{}) (string, error)
@@ -46,7 +51,7 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 		maxLength: 4096,
 	}
 	if hashKey == nil {
-		s.err = errors.New("securecookie: hash key is not set")
+		s.err = errHashKeyNotSet
 	}
 	if blockKey != nil {
 		s.BlockFunc(aes.NewCipher)
@@ -130,7 +135,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 		return "", s.err
 	}
 	if s.hashKey == nil {
-		s.err = errors.New("securecookie: hash key is not set")
+		s.err = errHashKeyNotSet
 		return "", s.err
 	}
 	var err error
@@ -174,7 +179,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 		return s.err
 	}
 	if s.hashKey == nil {
-		s.err = errors.New("securecookie: hash key is not set")
+		s.err = errHashKeyNotSet
 		return s.err
 	}
 	// 1. Check length.
@@ -356,8 +361,6 @@ func CodecsFromPairs(keyPairs ...[]byte) []Codec {
 	}
 	return codecs
 }
-
-var errNoCodecs = errors.New("securecookie: no codecs provided")
 
 // EncodeMulti encodes a cookie value using a group of codecs.
 //
