@@ -25,6 +25,8 @@ import (
 var (
 	errNoCodecs      = errors.New("securecookie: no codecs provided")
 	errHashKeyNotSet = errors.New("securecookie: hash key is not set")
+
+	ErrMacInvalid = errors.New("securecookie: the value is not valid")
 )
 
 // Codec defines an interface to encode and decode cookie values.
@@ -256,7 +258,7 @@ func verifyMac(h hash.Hash, value []byte, mac []byte) error {
 	if len(mac) == len(mac2) && subtle.ConstantTimeCompare(mac, mac2) == 1 {
 		return nil
 	}
-	return errors.New("securecookie: the value is not valid")
+	return ErrMacInvalid
 }
 
 // Encryption -----------------------------------------------------------------
