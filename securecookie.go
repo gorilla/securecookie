@@ -28,6 +28,7 @@ var (
 
 	ErrMacInvalid       = errors.New("securecookie: the value is not valid")
 	ErrValueTooLong     = errors.New("securecookie: the value is too long")
+	ErrValueInvalid     = errors.New("securecookie: invalid value")
 	ErrInvalidTimestamp = errors.New("securecookie: invalid timestamp")
 	ErrCookieTooNew     = errors.New("securecookie: timestamp is too new")
 	ErrCookieExpired    = errors.New("securecookie: expired timestamp")
@@ -201,7 +202,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	// 3. Verify MAC. Value is "date|value|mac".
 	parts := bytes.SplitN(b, []byte("|"), 3)
 	if len(parts) != 3 {
-		return fmt.Errorf("securecookie: invalid value '%v'", value)
+		return ErrValueInvalid
 	}
 	h := hmac.New(s.hashFunc, s.hashKey)
 	b = append([]byte(name+"|"), b[:len(b)-len(parts[2])-1]...)
