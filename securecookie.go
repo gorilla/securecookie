@@ -38,19 +38,22 @@ type Codec interface {
 // New returns a new SecureCookie.
 //
 // hashKey is required, used to authenticate values using HMAC. Create it using
-// GenerateRandomKey(). It is recommended to use a key with 32 or 64 bytes.
+// GenerateRandomKey() or GenerateRandomKeyReader(). It is recommended to use
+// a key with 32 or 64 bytes.
 //
 // blockKey is optional, used to encrypt values. Create it using
-// GenerateRandomKey(). The key length must correspond to the block size
-// of the encryption algorithm. For AES, used by default, valid lengths are
-// 16, 24, or 32 bytes to select AES-128, AES-192, or AES-256.
+// GenerateRandomKey() or GenerateRandomKeyReader(). The key length must
+// correspond to the block size of the encryption algorithm. For AES, used by
+// default, valid lengths are 16, 24, or 32 bytes to select AES-128, AES-192,
+// or AES-256.
 func New(hashKey, blockKey []byte) *SecureCookie {
 	s := &SecureCookie{
-		hashKey:   hashKey,
-		blockKey:  blockKey,
-		hashFunc:  sha256.New,
-		maxAge:    86400 * 30,
-		maxLength: 4096,
+		hashKey:      hashKey,
+		blockKey:     blockKey,
+		hashFunc:     sha256.New,
+		maxAge:       86400 * 30,
+		maxLength:    4096,
+		randomReader: rand.Reader,
 	}
 	if hashKey == nil {
 		s.err = errHashKeyNotSet
@@ -64,14 +67,15 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 // SecureCookie encodes and decodes authenticated and optionally encrypted
 // cookie values.
 type SecureCookie struct {
-	hashKey   []byte
-	hashFunc  func() hash.Hash
-	blockKey  []byte
-	block     cipher.Block
-	maxLength int
-	maxAge    int64
-	minAge    int64
-	err       error
+	hashKey      []byte
+	hashFunc     func() hash.Hash
+	blockKey     []byte
+	block        cipher.Block
+	maxLength    int
+	maxAge       int64
+	minAge       int64
+	err          error
+	randomReader io.Reader
 	// For testing purposes, the function that returns the current timestamp.
 	// If not set, it will use time.Now().UTC().Unix().
 	timeFunc func() int64
@@ -123,6 +127,14 @@ func (s *SecureCookie) BlockFunc(f func([]byte) (cipher.Block, error)) *SecureCo
 	return s
 }
 
+// RandomReader sets the reader to use when generating random data.
+//
+// Default is crypto/rand.Reader.
+func (s *SecureCookie) RandomReader(randomReader io.Reader) *SecureCookie {
+	s.randomReader = randomReader
+	return s
+}
+
 // Encode encodes a cookie value.
 //
 // It serializes, optionally encrypts, signs with a message authentication code, and
@@ -148,7 +160,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	}
 	// 2. Encrypt (optional).
 	if s.block != nil {
-		if b, err = encrypt(s.block, b); err != nil {
+		if b, err = encrypt(s.block, b, s.randomReader); err != nil {
 			return "", err
 		}
 	}
@@ -266,9 +278,9 @@ func verifyMac(h hash.Hash, value []byte, mac []byte) error {
 // encrypt encrypts a value using the given block in counter mode.
 //
 // A random initialization vector (http://goo.gl/zF67k) with the length of the
-// block size is prepended to the resulting ciphertext.
-func encrypt(block cipher.Block, value []byte) ([]byte, error) {
-	iv := GenerateRandomKey(block.BlockSize())
+// block size is read from the given reader and prepended to the resulting ciphertext.
+func encrypt(block cipher.Block, value []byte, randomReader io.Reader) ([]byte, error) {
+	iv := GenerateRandomKeyReader(block.BlockSize(), randomReader)
 	if iv == nil {
 		return nil, errors.New("securecookie: failed to generate random iv")
 	}
@@ -342,8 +354,14 @@ func decode(value []byte) ([]byte, error) {
 
 // GenerateRandomKey creates a random key with the given strength.
 func GenerateRandomKey(strength int) []byte {
+	return GenerateRandomKeyReader(strength, rand.Reader)
+}
+
+// GenerateRandomKeyReader creates a random key with the given strength
+// from the given io.Reader.
+func GenerateRandomKeyReader(strength int, randomReader io.Reader) []byte {
 	k := make([]byte, strength)
-	if _, err := io.ReadFull(rand.Reader, k); err != nil {
+	if _, err := io.ReadFull(randomReader, k); err != nil {
 		return nil
 	}
 	return k
