@@ -7,6 +7,7 @@ package securecookie
 import (
 	"crypto/aes"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -86,7 +87,7 @@ func TestEncription(t *testing.T) {
 	}
 	var encrypted, decrypted []byte
 	for _, value := range testStrings {
-		if encrypted, err = encrypt(block, []byte(value)); err != nil {
+		if encrypted, err = encrypt(block, []byte(value), rand.Reader); err != nil {
 			t.Error(err)
 		} else {
 			if decrypted, err = decrypt(block, encrypted); err != nil {
