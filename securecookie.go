@@ -38,14 +38,12 @@ type Codec interface {
 // New returns a new SecureCookie.
 //
 // hashKey is required, used to authenticate values using HMAC. Create it using
-// GenerateRandomKey() or GenerateRandomKeyReader(). It is recommended to use
-// a key with 32 or 64 bytes.
+// GenerateRandomKey(). It is recommended to use a key with 32 or 64 bytes.
 //
 // blockKey is optional, used to encrypt values. Create it using
-// GenerateRandomKey() or GenerateRandomKeyReader(). The key length must
-// correspond to the block size of the encryption algorithm. For AES, used by
-// default, valid lengths are 16, 24, or 32 bytes to select AES-128, AES-192,
-// or AES-256.
+// GenerateRandomKey(). The key length must correspond to the block size
+// of the encryption algorithm. For AES, used by default, valid lengths are
+// 16, 24, or 32 bytes to select AES-128, AES-192, or AES-256.
 func New(hashKey, blockKey []byte) *SecureCookie {
 	s := &SecureCookie{
 		hashKey:      hashKey,
@@ -128,6 +126,8 @@ func (s *SecureCookie) BlockFunc(f func([]byte) (cipher.Block, error)) *SecureCo
 }
 
 // RandomReader sets the reader to use when generating random data.
+// The default should only be changed if the given reader can provide
+// cryptographically secure random data.
 //
 // Default is crypto/rand.Reader.
 func (s *SecureCookie) RandomReader(randomReader io.Reader) *SecureCookie {
@@ -352,13 +352,16 @@ func decode(value []byte) ([]byte, error) {
 
 // Helpers --------------------------------------------------------------------
 
-// GenerateRandomKey creates a random key with the given strength.
+// GenerateRandomKey creates a random key with the given strength using
+// crypto/rand.Reader for random data generation.
 func GenerateRandomKey(strength int) []byte {
 	return GenerateRandomKeyReader(strength, rand.Reader)
 }
 
 // GenerateRandomKeyReader creates a random key with the given strength
-// from the given io.Reader.
+// from the given io.Reader. The provided reader must be able to generate
+// cryptographically secure random data, otherwise GenerateRandomKey should
+// be used.
 func GenerateRandomKeyReader(strength int, randomReader io.Reader) []byte {
 	k := make([]byte, strength)
 	if _, err := io.ReadFull(randomReader, k); err != nil {
