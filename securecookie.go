@@ -19,6 +19,7 @@ import (
 	"hash"
 	"io"
 	"strconv"
+	"sync"
 	"time"
 )
 
@@ -52,6 +53,8 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 		maxAge:    86400 * 30,
 		maxLength: 4096,
 	}
+	s.enc = gob.NewEncoder(&s.buf)
+	s.dec = gob.NewDecoder(&s.buf)
 	if hashKey == nil {
 		s.err = errHashKeyNotSet
 	}
@@ -72,6 +75,10 @@ type SecureCookie struct {
 	maxAge    int64
 	minAge    int64
 	err       error
+	lock      sync.Mutex
+	buf       bytes.Buffer
+	enc       *gob.Encoder // writes to buf
+	dec       *gob.Decoder // reads from buf
 	// For testing purposes, the function that returns the current timestamp.
 	// If not set, it will use time.Now().UTC().Unix().
 	timeFunc func() int64
@@ -143,7 +150,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	var err error
 	var b []byte
 	// 1. Serialize.
-	if b, err = serialize(value); err != nil {
+	if b, err = serialize(s, value); err != nil {
 		return "", err
 	}
 	// 2. Encrypt (optional).
@@ -226,7 +233,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 		}
 	}
 	// 6. Deserialize.
-	if err = deserialize(b, dst); err != nil {
+	if err = deserialize(s, b, dst); err != nil {
 		return err
 	}
 	// Done.
@@ -301,22 +308,30 @@ func decrypt(block cipher.Block, value []byte) ([]byte, error) {
 // Serialization --------------------------------------------------------------
 
 // serialize encodes a value using gob.
-func serialize(src interface{}) ([]byte, error) {
-	buf := new(bytes.Buffer)
-	enc := gob.NewEncoder(buf)
-	if err := enc.Encode(src); err != nil {
+func serialize(s *SecureCookie, src interface{}) ([]byte, error) {
+	s.lock.Lock()
+	s.buf.Reset()
+	err := s.enc.Encode(src)
+	if err != nil {
+		s.buf.Reset()
+		s.lock.Unlock()
 		return nil, err
 	}
-	return buf.Bytes(), nil
+	out := make([]byte, len(s.buf.Bytes()))
+	copy(out, s.buf.Bytes())
+	s.lock.Unlock()
+	return out, nil
 }
 
 // deserialize decodes a value using gob.
-func deserialize(src []byte, dst interface{}) error {
-	dec := gob.NewDecoder(bytes.NewBuffer(src))
-	if err := dec.Decode(dst); err != nil {
-		return err
-	}
-	return nil
+func deserialize(s *SecureCookie, src []byte, dst interface{}) error {
+	s.lock.Lock()
+	s.buf.Reset()
+	s.buf.Write(src)
+	err := s.dec.Decode(dst)
+	s.buf.Reset()
+	s.lock.Unlock()
+	return err
 }
 
 // Encoding -------------------------------------------------------------------
