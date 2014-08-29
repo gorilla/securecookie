@@ -9,7 +9,6 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/gob"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -25,23 +24,12 @@ var testStrings = []string{"foo", "bar", "baz"}
 
 func TestSecureCookie(t *testing.T) {
 	// TODO test too old / too new timestamps
-	compareMaps := func(m1, m2 map[string]interface{}) error {
-		if len(m1) != len(m2) {
-			return errors.New("different maps")
-		}
-		for k, v := range m1 {
-			if m2[k] != v {
-				return fmt.Errorf("Different value for key %v: expected %v, got %v", k, m2[k], v)
-			}
-		}
-		return nil
-	}
 
 	s1 := New([]byte("12345"), []byte("1234567890123456"))
 	s2 := New([]byte("54321"), []byte("6543210987654321"))
 	value := map[string]interface{}{
 		"foo": "bar",
-		"baz": 128,
+		"baz": float64(128),
 	}
 
 	for i := 0; i < 50; i++ {
@@ -57,9 +45,14 @@ func TestSecureCookie(t *testing.T) {
 		if err2 != nil {
 			t.Fatalf("%v: %v", err2, encoded)
 		}
-		if err := compareMaps(dst, value); err != nil {
-			t.Fatalf("Expected %v, got %v.", value, dst)
+		// check map equality
+		for key, val := range value {
+			v, ok := dst[key]
+			if !ok || !reflect.DeepEqual(v, val) {
+				t.Fatalf("%v and %v not equal", v, val)
+			}
 		}
+
 		dst2 := make(map[string]interface{})
 		err3 := s2.Decode("sid", encoded, &dst2)
 		if err3 == nil {
@@ -107,13 +100,12 @@ func TestSerialization(t *testing.T) {
 		deserialized map[string]string
 		err          error
 	)
-	cookie := New([]byte("12345"), []byte("1234567890123456"))
 	for _, value := range testCookies {
-		if serialized, err = serialize(cookie, value); err != nil {
+		if serialized, err = serialize(value); err != nil {
 			t.Error(err)
 		} else {
 			deserialized = make(map[string]string)
-			if err = deserialize(cookie, serialized, &deserialized); err != nil {
+			if err = deserialize(serialized, &deserialized); err != nil {
 				t.Error(err)
 			}
 			if fmt.Sprintf("%v", deserialized) != fmt.Sprintf("%v", value) {
@@ -187,6 +179,9 @@ func TestDifferentCookies(t *testing.T) {
 	src := &FooBar{42, "bar"}
 
 	val, _ := one.Encode("sid", src)
+
+	// then do it again
+	val, _ = one.Encode("sid", src)
 
 	dst := &FooBar{}
 	err := two.Decode("sid", val, dst)
