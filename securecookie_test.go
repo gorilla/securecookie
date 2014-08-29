@@ -11,6 +11,7 @@ import (
 	"encoding/gob"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -176,6 +177,25 @@ func TestCustomType(t *testing.T) {
 	_ = s1.Decode("sid", encoded, dst)
 	if dst.Foo != 42 || dst.Bar != "bar" {
 		t.Fatalf("Expected %#v, got %#v", src, dst)
+	}
+}
+
+func TestDifferentCookies(t *testing.T) {
+	one := New([]byte("12345"), []byte("1234567890123456"))
+	two := New([]byte("12345"), []byte("1234567890123456"))
+
+	src := &FooBar{42, "bar"}
+
+	val, _ := one.Encode("sid", src)
+
+	dst := &FooBar{}
+	err := two.Decode("sid", val, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(dst, src) {
+		t.Fatal("not equal")
 	}
 }
 
