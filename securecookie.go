@@ -321,15 +321,6 @@ func serialize(s *SecureCookie, src interface{}) ([]byte, error) {
 	copy(out, s.buf.Bytes())
 	s.lock.Unlock()
 	return out, nil
-
-	/*
-		buf := new(bytes.Buffer)
-		enc := gob.NewEncoder(buf)
-		if err := enc.Encode(src); err != nil {
-			return nil, err
-		}
-		return buf.Bytes(), nil
-	*/
 }
 
 // deserialize decodes a value using gob.
@@ -341,13 +332,6 @@ func deserialize(s *SecureCookie, src []byte, dst interface{}) error {
 	s.buf.Reset()
 	s.lock.Unlock()
 	return err
-	/*
-		dec := gob.NewDecoder(bytes.NewBuffer(src))
-		if err := dec.Decode(dst); err != nil {
-			return err
-		}
-		return nil
-	*/
 }
 
 // Encoding -------------------------------------------------------------------
