@@ -100,19 +100,19 @@ func TestEncription(t *testing.T) {
 	}
 }
 
-/*
 func TestSerialization(t *testing.T) {
 	var (
 		serialized   []byte
 		deserialized map[string]string
 		err          error
 	)
+	cookie := New([]byte("12345"), []byte("1234567890123456"))
 	for _, value := range testCookies {
-		if serialized, err = serialize(value); err != nil {
+		if serialized, err = serialize(cookie, value); err != nil {
 			t.Error(err)
 		} else {
 			deserialized = make(map[string]string)
-			if err = deserialize(serialized, &deserialized); err != nil {
+			if err = deserialize(cookie, serialized, &deserialized); err != nil {
 				t.Error(err)
 			}
 			if fmt.Sprintf("%v", deserialized) != fmt.Sprintf("%v", value) {
@@ -120,7 +120,7 @@ func TestSerialization(t *testing.T) {
 			}
 		}
 	}
-}*/
+}
 
 func TestEncoding(t *testing.T) {
 	for _, value := range testStrings {
