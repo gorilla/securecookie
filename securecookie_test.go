@@ -8,6 +8,7 @@ import (
 	"crypto/aes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/gob"
 	"errors"
 	"fmt"
 	"strings"
@@ -99,6 +100,7 @@ func TestEncription(t *testing.T) {
 	}
 }
 
+/*
 func TestSerialization(t *testing.T) {
 	var (
 		serialized   []byte
@@ -118,7 +120,7 @@ func TestSerialization(t *testing.T) {
 			}
 		}
 	}
-}
+}*/
 
 func TestEncoding(t *testing.T) {
 	for _, value := range testStrings {
@@ -174,5 +176,20 @@ func TestCustomType(t *testing.T) {
 	_ = s1.Decode("sid", encoded, dst)
 	if dst.Foo != 42 || dst.Bar != "bar" {
 		t.Fatalf("Expected %#v, got %#v", src, dst)
+	}
+}
+
+func BenchmarkRoundtrip(b *testing.B) {
+	cook := New([]byte("12345"), []byte("1234567890123456"))
+
+	src := &FooBar{42, "bar"}
+	gob.Register(src)
+
+	var val string
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		val, _ = cook.Encode("sid", src)
+		_ = cook.Decode("sid", val, src)
 	}
 }
