@@ -340,9 +340,9 @@ func decode(value []byte) ([]byte, error) {
 
 // Helpers --------------------------------------------------------------------
 
-// GenerateRandomKey creates a random key with the given strength.
-func GenerateRandomKey(strength int) []byte {
-	k := make([]byte, strength)
+// GenerateRandomKey creates a random key with the given length in bytes.
+func GenerateRandomKey(length int) []byte {
+	k := make([]byte, length)
 	if _, err := io.ReadFull(rand.Reader, k); err != nil {
 		return nil
 	}
