@@ -26,7 +26,13 @@ var (
 	errNoCodecs      = errors.New("securecookie: no codecs provided")
 	errHashKeyNotSet = errors.New("securecookie: hash key is not set")
 
-	ErrMacInvalid = errors.New("securecookie: the value is not valid")
+	ErrMacInvalid       = errors.New("securecookie: the value is not valid")
+	ErrValueTooLong     = errors.New("securecookie: the value is too long")
+	ErrValueInvalid     = errors.New("securecookie: invalid value")
+	ErrInvalidTimestamp = errors.New("securecookie: invalid timestamp")
+	ErrCookieTooNew     = errors.New("securecookie: timestamp is too new")
+	ErrCookieExpired    = errors.New("securecookie: expired timestamp")
+	ErrDecryptError     = errors.New("securecookie: the value could not be decrypted")
 )
 
 // Codec defines an interface to encode and decode cookie values.
@@ -162,7 +168,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	b = encode(b)
 	// 5. Check length.
 	if s.maxLength != 0 && len(b) > s.maxLength {
-		return "", errors.New("securecookie: the value is too long")
+		return "", ErrValueTooLong
 	}
 	// Done.
 	return string(b), nil
@@ -186,7 +192,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	}
 	// 1. Check length.
 	if s.maxLength != 0 && len(value) > s.maxLength {
-		return errors.New("securecookie: the value is too long")
+		return ErrValueTooLong
 	}
 	// 2. Decode from base64.
 	b, err := decode([]byte(value))
@@ -196,7 +202,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	// 3. Verify MAC. Value is "date|value|mac".
 	parts := bytes.SplitN(b, []byte("|"), 3)
 	if len(parts) != 3 {
-		return errors.New("securecookie: invalid value %v")
+		return ErrValueInvalid
 	}
 	h := hmac.New(s.hashFunc, s.hashKey)
 	b = append([]byte(name+"|"), b[:len(b)-len(parts[2])-1]...)
@@ -206,14 +212,14 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	// 4. Verify date ranges.
 	var t1 int64
 	if t1, err = strconv.ParseInt(string(parts[0]), 10, 64); err != nil {
-		return errors.New("securecookie: invalid timestamp")
+		return ErrInvalidTimestamp
 	}
 	t2 := s.timestamp()
 	if s.minAge != 0 && t1 > t2-s.minAge {
-		return errors.New("securecookie: timestamp is too new")
+		return ErrCookieTooNew
 	}
 	if s.maxAge != 0 && t1 < t2-s.maxAge {
-		return errors.New("securecookie: expired timestamp")
+		return ErrCookieExpired
 	}
 	// 5. Decrypt (optional).
 	b, err = decode(parts[1])
@@ -295,7 +301,7 @@ func decrypt(block cipher.Block, value []byte) ([]byte, error) {
 		stream.XORKeyStream(value, value)
 		return value, nil
 	}
-	return nil, errors.New("securecookie: the value could not be decrypted")
+	return nil, ErrDecryptError
 }
 
 // Serialization --------------------------------------------------------------
