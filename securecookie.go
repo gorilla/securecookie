@@ -196,7 +196,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	// 3. Verify MAC. Value is "date|value|mac".
 	parts := bytes.SplitN(b, []byte("|"), 3)
 	if len(parts) != 3 {
-		return errors.New("securecookie: invalid value %v")
+		return ErrMacInvalid
 	}
 	h := hmac.New(s.hashFunc, s.hashKey)
 	b = append([]byte(name+"|"), b[:len(b)-len(parts[2])-1]...)
