@@ -157,6 +157,16 @@ func TestMultiNoCodecs(t *testing.T) {
 	}
 }
 
+func TestMissingKey(t *testing.T) {
+	s1 := New(nil, nil)
+
+	var dst []byte
+	err := s1.Decode("sid", "value", &dst)
+	if err != errHashKeyNotSet {
+		t.Fatalf("Expected %#v, got %#v", errHashKeyNotSet, err)
+	}
+}
+
 // ----------------------------------------------------------------------------
 
 type FooBar struct {
