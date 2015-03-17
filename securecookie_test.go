@@ -8,8 +8,9 @@ import (
 	"crypto/aes"
 	"crypto/hmac"
 	"crypto/sha256"
-	"errors"
+	"encoding/gob"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -23,23 +24,12 @@ var testStrings = []string{"foo", "bar", "baz"}
 
 func TestSecureCookie(t *testing.T) {
 	// TODO test too old / too new timestamps
-	compareMaps := func(m1, m2 map[string]interface{}) error {
-		if len(m1) != len(m2) {
-			return errors.New("different maps")
-		}
-		for k, v := range m1 {
-			if m2[k] != v {
-				return fmt.Errorf("Different value for key %v: expected %v, got %v", k, m2[k], v)
-			}
-		}
-		return nil
-	}
 
 	s1 := New([]byte("12345"), []byte("1234567890123456"))
 	s2 := New([]byte("54321"), []byte("6543210987654321"))
 	value := map[string]interface{}{
 		"foo": "bar",
-		"baz": 128,
+		"baz": float64(128),
 	}
 
 	for i := 0; i < 50; i++ {
@@ -55,9 +45,14 @@ func TestSecureCookie(t *testing.T) {
 		if err2 != nil {
 			t.Fatalf("%v: %v", err2, encoded)
 		}
-		if err := compareMaps(dst, value); err != nil {
-			t.Fatalf("Expected %v, got %v.", value, dst)
+		// check map equality
+		for key, val := range value {
+			v, ok := dst[key]
+			if !ok || !reflect.DeepEqual(v, val) {
+				t.Fatalf("%v and %v not equal", v, val)
+			}
 		}
+
 		dst2 := make(map[string]interface{})
 		err3 := s2.Decode("sid", encoded, &dst2)
 		if err3 == nil {
@@ -184,5 +179,49 @@ func TestCustomType(t *testing.T) {
 	_ = s1.Decode("sid", encoded, dst)
 	if dst.Foo != 42 || dst.Bar != "bar" {
 		t.Fatalf("Expected %#v, got %#v", src, dst)
+	}
+}
+
+func TestDifferentCookies(t *testing.T) {
+	one := New([]byte("12345"), []byte("1234567890123456"))
+	two := New([]byte("12345"), []byte("1234567890123456"))
+
+	src := &FooBar{42, "bar"}
+
+	val, _ := one.Encode("sid", src)
+
+	// then do it again
+	val, _ = one.Encode("sid", src)
+
+	dst := &FooBar{}
+	err := two.Decode("sid", val, dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !reflect.DeepEqual(dst, src) {
+		t.Fatal("not equal")
+	}
+}
+
+func BenchmarkRoundtrip(b *testing.B) {
+	cook := New([]byte("12345"), []byte("1234567890123456"))
+
+	src := &FooBar{42, "bar"}
+	gob.Register(src)
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	var err error
+	var val string
+	for i := 0; i < b.N; i++ {
+		val, err = cook.Encode("sid", src)
+		if err != nil {
+			b.Fatal(err)
+		}
+		err = cook.Decode("sid", val, src)
+		if err != nil {
+			b.Fatal(err)
+		}
 	}
 }

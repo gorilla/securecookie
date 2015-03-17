@@ -13,7 +13,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
-	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -321,21 +321,12 @@ func decrypt(block cipher.Block, value []byte) ([]byte, error) {
 
 // serialize encodes a value using gob.
 func serialize(src interface{}) ([]byte, error) {
-	buf := new(bytes.Buffer)
-	enc := gob.NewEncoder(buf)
-	if err := enc.Encode(src); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return json.Marshal(src)
 }
 
 // deserialize decodes a value using gob.
 func deserialize(src []byte, dst interface{}) error {
-	dec := gob.NewDecoder(bytes.NewBuffer(src))
-	if err := dec.Decode(dst); err != nil {
-		return err
-	}
-	return nil
+	return json.Unmarshal(src, dst)
 }
 
 // Encoding -------------------------------------------------------------------
