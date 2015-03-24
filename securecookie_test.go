@@ -8,6 +8,7 @@ import (
 	"crypto/aes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -184,5 +185,18 @@ func TestCustomType(t *testing.T) {
 	_ = s1.Decode("sid", encoded, dst)
 	if dst.Foo != 42 || dst.Bar != "bar" {
 		t.Fatalf("Expected %#v, got %#v", src, dst)
+	}
+}
+
+func TestMacInvalid(t *testing.T) {
+	s1 := New([]byte("12345"), []byte("1234567890123456"))
+	err := s1.Decode("sid", base64.StdEncoding.EncodeToString([]byte("|")), nil)
+	if err != ErrMacInvalid {
+		t.Fatalf("Expected %#v, got %#v", ErrMacInvalid, err)
+	}
+
+	err = s1.Decode("sid", base64.StdEncoding.EncodeToString([]byte("")), nil)
+	if err != ErrMacInvalid {
+		t.Fatalf("Expected %#v, got %#v", ErrMacInvalid, err)
 	}
 }
