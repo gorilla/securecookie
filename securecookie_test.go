@@ -167,6 +167,16 @@ func TestMissingKey(t *testing.T) {
 	}
 }
 
+func TestInvalidKey(t *testing.T) {
+	s1 := New(nil, nil)
+
+	var dst []byte
+	err := s1.Decode("sid", "H4X0RD-VALUE", &dst)
+	if err != errHashKeyNotSet {
+		t.Fatalf("Expected %#v, got %#v", errHashKeyNotSet, err)
+	}
+}
+
 // ----------------------------------------------------------------------------
 
 type FooBar struct {
