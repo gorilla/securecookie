@@ -8,6 +8,7 @@ import (
 	"crypto/aes"
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -62,6 +63,27 @@ func TestSecureCookie(t *testing.T) {
 		err3 := s2.Decode("sid", encoded, &dst2)
 		if err3 == nil {
 			t.Fatalf("Expected failure decoding.")
+		}
+	}
+}
+
+func TestDecodeInvalid(t *testing.T) {
+	// List of invalid cookies, which must not be accepted, base64-decoded
+	// (they will be encoded before passing to Decode).
+	invalidCookies := []string{
+		"",
+		" ",
+		"\n",
+		"||",
+		"|||",
+		"cookie",
+	}
+	s := New([]byte("12345"), nil)
+	var dst string
+	for i, v := range invalidCookies {
+		err := s.Decode("name", base64.StdEncoding.EncodeToString([]byte(v)), &dst)
+		if err == nil {
+			t.Fatalf("%d: expected failure decoding", i)
 		}
 	}
 }
