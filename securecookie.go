@@ -177,12 +177,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 // it was stored. The value argument is the encoded cookie value. The dst
 // argument is where the cookie will be decoded. It must be a pointer.
 func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
-	// retErr is the error which will be returned.
-	// It will be the first error that will occur (if any).
 	var retErr error
-
-	// setErr saves the error only if there was no previous error.
-	// Otherwise retErr would be overwritten by subsequent errors.
 	setErr := func(err error) {
 		if retErr == nil {
 			retErr = err
