@@ -183,9 +183,6 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 
 	// setErr saves the error only if there was no previous error.
 	// Otherwise retErr would be overwritten by subsequent errors.
-	// This is used so that a nearly-same codepath is taken on each
-	// decode to help reduce the possibility of timing attacks.
-	// See #15 for details.
 	setErr := func(err error) {
 		if retErr == nil {
 			retErr = err
