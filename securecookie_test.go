@@ -101,7 +101,7 @@ func TestAuthentication(t *testing.T) {
 	}
 }
 
-func TestEncription(t *testing.T) {
+func TestEncryption(t *testing.T) {
 	block, err := aes.NewCipher([]byte("1234567890123456"))
 	if err != nil {
 		t.Fatalf("Block could not be created")
