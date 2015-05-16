@@ -14,6 +14,7 @@ import (
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/gob"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"hash"
@@ -44,6 +45,7 @@ type Codec interface {
 // GenerateRandomKey(). The key length must correspond to the block size
 // of the encryption algorithm. For AES, used by default, valid lengths are
 // 16, 24, or 32 bytes to select AES-128, AES-192, or AES-256.
+// The default encoder used for cookie serialization is encoding/gob.
 func New(hashKey, blockKey []byte) *SecureCookie {
 	s := &SecureCookie{
 		hashKey:   hashKey,
@@ -51,6 +53,7 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 		hashFunc:  sha256.New,
 		maxAge:    86400 * 30,
 		maxLength: 4096,
+		sz:        GobEncoder{},
 	}
 	if hashKey == nil {
 		s.err = errHashKeyNotSet
@@ -72,10 +75,27 @@ type SecureCookie struct {
 	maxAge    int64
 	minAge    int64
 	err       error
+	sz        Serializer
 	// For testing purposes, the function that returns the current timestamp.
 	// If not set, it will use time.Now().UTC().Unix().
 	timeFunc func() int64
 }
+
+// Serializer provides an interface for providing custom serializers for cookie
+// values.
+type Serializer interface {
+	Serialize(src interface{}) ([]byte, error)
+	Deserialize(src []byte, dst interface{}) error
+}
+
+// GobEncoder encodes cookie values using encoding/gob. This is the simplest
+// serializer and can handle complex types via gob.Register.
+type GobEncoder struct{}
+
+// JSONEncoder encodes cookie values using encoding/json. Users who wish to
+// encode complex types need to satisfy the json.Marshaller and
+// json.Unmarshaller interfaces.
+type JSONEncoder struct{}
 
 // MaxLength restricts the maximum length, in bytes, for the cookie value.
 //
@@ -123,6 +143,15 @@ func (s *SecureCookie) BlockFunc(f func([]byte) (cipher.Block, error)) *SecureCo
 	return s
 }
 
+// Encoding sets the encoding/serialization method for cookies.
+//
+// Default is encoding/gob.
+func (s *SecureCookie) SetSerializer(sz Serializer) *SecureCookie {
+	s.sz = sz
+
+	return s
+}
+
 // Encode encodes a cookie value.
 //
 // It serializes, optionally encrypts, signs with a message authentication code, and
@@ -143,7 +172,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	var err error
 	var b []byte
 	// 1. Serialize.
-	if b, err = serialize(value); err != nil {
+	if b, err = s.sz.Serialize(value); err != nil {
 		return "", err
 	}
 	// 2. Encrypt (optional).
@@ -226,7 +255,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 		}
 	}
 	// 6. Deserialize.
-	if err = deserialize(b, dst); err != nil {
+	if err = s.sz.Deserialize(b, dst); err != nil {
 		return err
 	}
 	// Done.
@@ -300,8 +329,8 @@ func decrypt(block cipher.Block, value []byte) ([]byte, error) {
 
 // Serialization --------------------------------------------------------------
 
-// serialize encodes a value using gob.
-func serialize(src interface{}) ([]byte, error) {
+// Serialize encodes a value using gob.
+func (e GobEncoder) Serialize(src interface{}) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
 	if err := enc.Encode(src); err != nil {
@@ -310,9 +339,29 @@ func serialize(src interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// deserialize decodes a value using gob.
-func deserialize(src []byte, dst interface{}) error {
+// Deserialize decodes a value using gob.
+func (e GobEncoder) Deserialize(src []byte, dst interface{}) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(src))
+	if err := dec.Decode(dst); err != nil {
+		return err
+	}
+	return nil
+}
+
+// Serialize encodes a value using encoding/json.
+func (e JSONEncoder) Serialize(src interface{}) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	enc := json.NewEncoder(buf)
+	if err := enc.Encode(src); err != nil {
+		return nil, err
+	}
+
+	return buf.Bytes(), nil
+}
+
+// Deserialize decodes a value using encoding/json.
+func (e JSONEncoder) Deserialize(src []byte, dst interface{}) error {
+	dec := json.NewDecoder(bytes.NewReader(src))
 	if err := dec.Decode(dst); err != nil {
 		return err
 	}
