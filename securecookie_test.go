@@ -121,18 +121,41 @@ func TestEncription(t *testing.T) {
 	}
 }
 
-func TestSerialization(t *testing.T) {
+func TestGobSerialization(t *testing.T) {
 	var (
+		enc          GobEncoder
 		serialized   []byte
 		deserialized map[string]string
 		err          error
 	)
 	for _, value := range testCookies {
-		if serialized, err = serialize(value); err != nil {
+		if serialized, err = enc.serialize(value); err != nil {
 			t.Error(err)
 		} else {
 			deserialized = make(map[string]string)
-			if err = deserialize(serialized, &deserialized); err != nil {
+			if err = enc.deserialize(serialized, &deserialized); err != nil {
+				t.Error(err)
+			}
+			if fmt.Sprintf("%v", deserialized) != fmt.Sprintf("%v", value) {
+				t.Errorf("Expected %v, got %v.", value, deserialized)
+			}
+		}
+	}
+}
+
+func TestJSONSerialization(t *testing.T) {
+	var (
+		enc          JSONEncoder
+		serialized   []byte
+		deserialized map[string]string
+		err          error
+	)
+	for _, value := range testCookies {
+		if serialized, err = enc.serialize(value); err != nil {
+			t.Error(err)
+		} else {
+			deserialized = make(map[string]string)
+			if err = enc.deserialize(serialized, &deserialized); err != nil {
 				t.Error(err)
 			}
 			if fmt.Sprintf("%v", deserialized) != fmt.Sprintf("%v", value) {
