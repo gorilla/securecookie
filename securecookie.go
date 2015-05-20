@@ -89,7 +89,7 @@ type Serializer interface {
 }
 
 // GobEncoder encodes cookie values using encoding/gob. This is the simplest
-// serializer and can handle complex types via gob.Register.
+// encoder and can handle complex types via gob.Register.
 type GobEncoder struct{}
 
 // JSONEncoder encodes cookie values using encoding/json. Users who wish to
