@@ -52,6 +52,20 @@ func TestSecureCookie(t *testing.T) {
 		if err3 == nil {
 			t.Fatalf("Expected failure decoding.")
 		}
+		if !IsErrorType(err3, DecodeError) {
+			t.Fatalf("Expected DecodeError, got: %#v", err3)
+		}
+
+		// Test bit-masking usage of the error type inspection.
+		if !IsErrorType(err3, DecodeError|UsageError) {
+			t.Fatalf("Expected DecodeError|UsageError, got: %#v", err3)
+		}
+		if !IsErrorType(err3, DecodeError|UsageError|InternalError) {
+			t.Fatalf("Expected DecodeError|UsageError|InternalError, got: %#v", err3)
+		}
+		if IsErrorType(err3, UsageError|InternalError) {
+			t.Fatalf("Did not expect (UsageError|InternalError), got: %#v", err3)
+		}
 	}
 }
 
@@ -69,9 +83,17 @@ func TestDecodeInvalid(t *testing.T) {
 	s := New([]byte("12345"), nil)
 	var dst string
 	for i, v := range invalidCookies {
-		err := s.Decode("name", base64.StdEncoding.EncodeToString([]byte(v)), &dst)
-		if err == nil {
-			t.Fatalf("%d: expected failure decoding", i)
+		for _, enc := range []*base64.Encoding{
+			base64.StdEncoding,
+			base64.URLEncoding,
+		} {
+			err := s.Decode("name", enc.EncodeToString([]byte(v)), &dst)
+			if err == nil {
+				t.Fatalf("%d: expected failure decoding", i)
+			}
+			if !IsErrorType(err, DecodeError) {
+				t.Fatalf("%d: Expected DecodeError, got: %#v", i, err)
+			}
 		}
 	}
 }
@@ -197,6 +219,9 @@ func TestMissingKey(t *testing.T) {
 	err := s1.Decode("sid", "value", &dst)
 	if err != errHashKeyNotSet {
 		t.Fatalf("Expected %#v, got %#v", errHashKeyNotSet, err)
+	}
+	if !IsErrorType(err, UsageError) {
+		t.Errorf("Expected missing hash key to be a UsageError; was %#v", err)
 	}
 }
 
