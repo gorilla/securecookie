@@ -5,10 +5,13 @@
 package securecookie
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -259,4 +262,35 @@ func TestCustomType(t *testing.T) {
 	if dst.Foo != 42 || dst.Bar != "bar" {
 		t.Fatalf("Expected %#v, got %#v", src, dst)
 	}
+}
+
+// errReader is an io.Reader that always returns error.
+type errReader struct{}
+
+func (r *errReader) Read(b []byte) (int, error) {
+	return 0, errors.New("read error")
+}
+
+func TestGenerateRandomKey(t *testing.T) {
+	a := GenerateRandomKey(32)
+	b := GenerateRandomKey(32)
+	if a == nil || b == nil {
+		t.Fatal("GenerateRandomKey returned nil")
+	}
+	if bytes.Equal(a, b) {
+		t.Fatal("GenerateRandomKey returned the same values")
+	}
+
+	prevReader := rand.Reader
+	rand.Reader = new(errReader)
+
+	defer func() {
+		err := recover()
+		if err == nil {
+			t.Fatalf("GenerateRandomKey didn't panic on error")
+		}
+		rand.Reader = prevReader
+	}()
+
+	GenerateRandomKey(32)
 }

@@ -381,8 +381,8 @@ func verifyMac(h hash.Hash, value []byte, mac []byte) error {
 // A random initialization vector (http://goo.gl/zF67k) with the length of the
 // block size is prepended to the resulting ciphertext.
 func encrypt(block cipher.Block, value []byte) ([]byte, error) {
-	iv := GenerateRandomKey(block.BlockSize())
-	if iv == nil {
+	iv, err := randomBytes(block.BlockSize())
+	if err != nil {
 		return nil, errGeneratingIV
 	}
 	// Encrypt it.
@@ -472,12 +472,21 @@ func decode(value []byte) ([]byte, error) {
 
 // Helpers --------------------------------------------------------------------
 
-// GenerateRandomKey creates a random key with the given length in bytes.
-// On failure, returns nil.
-func GenerateRandomKey(length int) []byte {
+// randomBytes returns a byte slice of the given length filled with random bytes.
+func randomBytes(length int) ([]byte, error) {
 	k := make([]byte, length)
 	if _, err := io.ReadFull(rand.Reader, k); err != nil {
-		return nil
+		return nil, err
+	}
+	return k, nil
+}
+
+// GenerateRandomKey creates a random key with the given length in bytes.
+// It panics if it fails to read random bytes.
+func GenerateRandomKey(length int) []byte {
+	k, err := randomBytes(length)
+	if err != nil {
+		panic("securecookie: failed to generate random key")
 	}
 	return k
 }
