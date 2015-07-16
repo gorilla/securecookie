@@ -8,7 +8,7 @@ cookie values.
 Secure cookies can't be forged, because their values are validated using HMAC.
 When encrypted, the content is also inaccessible to malicious eyes. It is still
 recommended that sensitive data not be stored in cookies, and that HTTPS be used
-to prevent cookie [replay attacks](https://en.wikipedia.org/wiki/Replay_attack](https://en.wikipedia.org/wiki/Replay_attack).
+to prevent cookie [replay attacks](https://en.wikipedia.org/wiki/Replay_attack).
 
 ## Examples
 
