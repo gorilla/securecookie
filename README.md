@@ -17,7 +17,7 @@ To use it, first create a new SecureCookie instance:
 ```go
 // Hash keys should be at least 32 bytes long
 var hashKey = []byte("very-secret")
-// Block keys should be 32 bytes (AES-128) or 64 bytes (AES-256) long.
+// Block keys should be 16 bytes (AES-128) or 32 bytes (AES-256) long.
 // Shorter keys may weaken the encryption used.
 var blockKey = []byte("a-lot-secret")
 var s = securecookie.New(hashKey, blockKey)
