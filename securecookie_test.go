@@ -15,6 +15,10 @@ import (
 	"testing"
 )
 
+// Asserts that cookieError and MultiError are Error implementations.
+var _ Error = cookieError{}
+var _ Error = MultiError{}
+
 var testCookies = []interface{}{
 	map[string]string{"foo": "bar"},
 	map[string]string{"baz": "ding"},
@@ -52,6 +56,21 @@ func TestSecureCookie(t *testing.T) {
 		if err3 == nil {
 			t.Fatalf("Expected failure decoding.")
 		}
+		err4, ok := err3.(Error)
+		if !ok {
+			t.Fatalf("Expected error to implement Error, got: %#v", err3)
+		}
+		if !err4.IsDecode() {
+			t.Fatalf("Expected DecodeError, got: %#v", err4)
+		}
+
+		// Test other error type flags.
+		if err4.IsUsage() {
+			t.Fatalf("Expected IsUsage() == false, got: %#v", err4)
+		}
+		if err4.IsInternal() {
+			t.Fatalf("Expected IsInternal() == false, got: %#v", err4)
+		}
 	}
 }
 
@@ -69,9 +88,18 @@ func TestDecodeInvalid(t *testing.T) {
 	s := New([]byte("12345"), nil)
 	var dst string
 	for i, v := range invalidCookies {
-		err := s.Decode("name", base64.StdEncoding.EncodeToString([]byte(v)), &dst)
-		if err == nil {
-			t.Fatalf("%d: expected failure decoding", i)
+		for _, enc := range []*base64.Encoding{
+			base64.StdEncoding,
+			base64.URLEncoding,
+		} {
+			err := s.Decode("name", enc.EncodeToString([]byte(v)), &dst)
+			if err == nil {
+				t.Fatalf("%d: expected failure decoding", i)
+			}
+			err2, ok := err.(Error)
+			if !ok || !err2.IsDecode() {
+				t.Fatalf("%d: Expected IsDecode(), got: %#v", i, err)
+			}
 		}
 	}
 }
@@ -174,6 +202,16 @@ func TestMultiError(t *testing.T) {
 		if strings.Index(err.Error(), "hash key is not set") == -1 {
 			t.Errorf("Expected missing hash key error, got %s.", err.Error())
 		}
+		ourErr, ok := err.(Error)
+		if !ok || !ourErr.IsUsage() {
+			t.Fatalf("Expected error to be a usage error; got %#v", err)
+		}
+		if ourErr.IsDecode() {
+			t.Errorf("Expected error NOT to be a decode error; got %#v", ourErr)
+		}
+		if ourErr.IsInternal() {
+			t.Errorf("Expected error NOT to be an internal error; got %#v", ourErr)
+		}
 	}
 }
 
@@ -197,6 +235,9 @@ func TestMissingKey(t *testing.T) {
 	err := s1.Decode("sid", "value", &dst)
 	if err != errHashKeyNotSet {
 		t.Fatalf("Expected %#v, got %#v", errHashKeyNotSet, err)
+	}
+	if err2, ok := err.(Error); !ok || !err2.IsUsage() {
+		t.Errorf("Expected missing hash key to be IsUsage(); was %#v", err)
 	}
 }
 
