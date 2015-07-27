@@ -88,9 +88,6 @@ func (e cookieError) Error() string {
 	return strings.Join(parts, "")
 }
 
-// Asserts that errorImpl is an Error implementation.
-var _ Error = errorImpl{}
-
 var (
 	errGeneratingIV = cookieError{typ: internalError, msg: "failed to generate random iv"}
 
@@ -591,6 +588,3 @@ func (m MultiError) any(pred func(Error) bool) bool {
 	}
 	return false
 }
-
-// Asserts that MultiError is an Error implementation.
-var _ Error = MultiError{}

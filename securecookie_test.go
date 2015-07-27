@@ -15,6 +15,10 @@ import (
 	"testing"
 )
 
+// Asserts that cookieError and MultiError are Error implementations.
+var _ Error = cookieError{}
+var _ Error = MultiError{}
+
 var testCookies = []interface{}{
 	map[string]string{"foo": "bar"},
 	map[string]string{"baz": "ding"},
