@@ -54,7 +54,7 @@ type Error interface {
 	Cause() error
 }
 
-// errorType is a bitmask giving the error type(s) of an errorImpl value.
+// errorType is a bitmask giving the error type(s) of an cookieError value.
 type errorType int
 
 const (
@@ -63,19 +63,19 @@ const (
 	internalError
 )
 
-type errorImpl struct {
+type cookieError struct {
 	typ   errorType
 	msg   string
 	cause error
 }
 
-func (e errorImpl) IsUsage() bool    { return (e.typ & usageError) != 0 }
-func (e errorImpl) IsDecode() bool   { return (e.typ & decodeError) != 0 }
-func (e errorImpl) IsInternal() bool { return (e.typ & internalError) != 0 }
+func (e cookieError) IsUsage() bool    { return (e.typ & usageError) != 0 }
+func (e cookieError) IsDecode() bool   { return (e.typ & decodeError) != 0 }
+func (e cookieError) IsInternal() bool { return (e.typ & internalError) != 0 }
 
-func (e errorImpl) Cause() error { return e.cause }
+func (e cookieError) Cause() error { return e.cause }
 
-func (e errorImpl) Error() string {
+func (e cookieError) Error() string {
 	parts := []string{"securecookie: "}
 	if e.msg == "" {
 		parts = append(parts, "error")
@@ -92,25 +92,25 @@ func (e errorImpl) Error() string {
 var _ Error = errorImpl{}
 
 var (
-	errGeneratingIV = errorImpl{typ: internalError, msg: "failed to generate random iv"}
+	errGeneratingIV = cookieError{typ: internalError, msg: "failed to generate random iv"}
 
-	errNoCodecs            = errorImpl{typ: usageError, msg: "no codecs provided"}
-	errHashKeyNotSet       = errorImpl{typ: usageError, msg: "hash key is not set"}
-	errBlockKeyNotSet      = errorImpl{typ: usageError, msg: "block key is not set"}
-	errEncodedValueTooLong = errorImpl{typ: usageError, msg: "the value is too long"}
+	errNoCodecs            = cookieError{typ: usageError, msg: "no codecs provided"}
+	errHashKeyNotSet       = cookieError{typ: usageError, msg: "hash key is not set"}
+	errBlockKeyNotSet      = cookieError{typ: usageError, msg: "block key is not set"}
+	errEncodedValueTooLong = cookieError{typ: usageError, msg: "the value is too long"}
 
-	errValueToDecodeTooLong = errorImpl{typ: decodeError, msg: "the value is too long"}
-	errTimestampInvalid     = errorImpl{typ: decodeError, msg: "invalid timestamp"}
-	errTimestampTooNew      = errorImpl{typ: decodeError, msg: "timestamp is too new"}
-	errTimestampExpired     = errorImpl{typ: decodeError, msg: "expired timestamp"}
-	errDecryptionFailed     = errorImpl{typ: decodeError, msg: "the value could not be decrypted"}
+	errValueToDecodeTooLong = cookieError{typ: decodeError, msg: "the value is too long"}
+	errTimestampInvalid     = cookieError{typ: decodeError, msg: "invalid timestamp"}
+	errTimestampTooNew      = cookieError{typ: decodeError, msg: "timestamp is too new"}
+	errTimestampExpired     = cookieError{typ: decodeError, msg: "expired timestamp"}
+	errDecryptionFailed     = cookieError{typ: decodeError, msg: "the value could not be decrypted"}
 
 	// ErrMacInvalid indicates that cookie decoding failed because the HMAC
 	// could not be extracted and verified.  Direct use of this error
 	// variable is deprecated; it is public only for legacy compatibility,
 	// and may be privatized in the future, as it is rarely useful to
 	// distinguish between this error and other Error implementations.
-	ErrMacInvalid = errorImpl{typ: decodeError, msg: "the value is not valid"}
+	ErrMacInvalid = cookieError{typ: decodeError, msg: "the value is not valid"}
 )
 
 // Codec defines an interface to encode and decode cookie values.
@@ -221,7 +221,7 @@ func (s *SecureCookie) BlockFunc(f func([]byte) (cipher.Block, error)) *SecureCo
 	} else if block, err := f(s.blockKey); err == nil {
 		s.block = block
 	} else {
-		s.err = errorImpl{cause: err, typ: usageError}
+		s.err = cookieError{cause: err, typ: usageError}
 	}
 	return s
 }
@@ -260,12 +260,12 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	var b []byte
 	// 1. Serialize.
 	if b, err = s.sz.Serialize(value); err != nil {
-		return "", errorImpl{cause: err, typ: usageError}
+		return "", cookieError{cause: err, typ: usageError}
 	}
 	// 2. Encrypt (optional).
 	if s.block != nil {
 		if b, err = encrypt(s.block, b); err != nil {
-			return "", errorImpl{cause: err, typ: usageError}
+			return "", cookieError{cause: err, typ: usageError}
 		}
 	}
 	b = encode(b)
@@ -343,7 +343,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	}
 	// 6. Deserialize.
 	if err = s.sz.Deserialize(b, dst); err != nil {
-		return errorImpl{cause: err, typ: decodeError}
+		return cookieError{cause: err, typ: decodeError}
 	}
 	// Done.
 	return nil
@@ -421,7 +421,7 @@ func (e GobEncoder) Serialize(src interface{}) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
 	if err := enc.Encode(src); err != nil {
-		return nil, errorImpl{cause: err, typ: usageError}
+		return nil, cookieError{cause: err, typ: usageError}
 	}
 	return buf.Bytes(), nil
 }
@@ -430,7 +430,7 @@ func (e GobEncoder) Serialize(src interface{}) ([]byte, error) {
 func (e GobEncoder) Deserialize(src []byte, dst interface{}) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(src))
 	if err := dec.Decode(dst); err != nil {
-		return errorImpl{cause: err, typ: decodeError}
+		return cookieError{cause: err, typ: decodeError}
 	}
 	return nil
 }
@@ -440,7 +440,7 @@ func (e JSONEncoder) Serialize(src interface{}) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := json.NewEncoder(buf)
 	if err := enc.Encode(src); err != nil {
-		return nil, errorImpl{cause: err, typ: usageError}
+		return nil, cookieError{cause: err, typ: usageError}
 	}
 	return buf.Bytes(), nil
 }
@@ -449,7 +449,7 @@ func (e JSONEncoder) Serialize(src interface{}) ([]byte, error) {
 func (e JSONEncoder) Deserialize(src []byte, dst interface{}) error {
 	dec := json.NewDecoder(bytes.NewReader(src))
 	if err := dec.Decode(dst); err != nil {
-		return errorImpl{cause: err, typ: decodeError}
+		return cookieError{cause: err, typ: decodeError}
 	}
 	return nil
 }
@@ -468,7 +468,7 @@ func decode(value []byte) ([]byte, error) {
 	decoded := make([]byte, base64.URLEncoding.DecodedLen(len(value)))
 	b, err := base64.URLEncoding.Decode(decoded, value)
 	if err != nil {
-		return nil, errorImpl{cause: err, typ: decodeError, msg: "base64 decode failed"}
+		return nil, cookieError{cause: err, typ: decodeError, msg: "base64 decode failed"}
 	}
 	return decoded[:b], nil
 }
