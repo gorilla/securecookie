@@ -74,6 +74,18 @@ func TestSecureCookie(t *testing.T) {
 	}
 }
 
+func TestSecureCookieNilKey(t *testing.T) {
+	s1 := New(nil, nil)
+	value := map[string]interface{}{
+		"foo": "bar",
+		"baz": 128,
+	}
+	_, err := s1.Encode("sid", value)
+	if err != errHashKeyNotSet {
+		t.Fatal("Wrong error returned:", err)
+	}
+}
+
 func TestDecodeInvalid(t *testing.T) {
 	// List of invalid cookies, which must not be accepted, base64-decoded
 	// (they will be encoded before passing to Decode).
