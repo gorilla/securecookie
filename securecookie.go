@@ -484,7 +484,29 @@ func GenerateRandomKey(length int) []byte {
 
 // CodecsFromPairs returns a slice of SecureCookie instances.
 //
-// It is a convenience function to create a list of codecs for key rotation.
+// It is a convenience function to create a list of codecs for key rotation. Note
+// that the generated Codecs will have the default options applied: callers
+// should iterate over each Codec and type-assert the underlying *SecureCookie to
+// change these.
+//
+// Example:
+//
+//      codecs := securecookie.CodecsFromPairs(
+//           []byte("new-hash-key"),
+//           []byte("new-block-key"),
+//           []byte("old-hash-key"),
+//           []byte("old-block-key"),
+//       )
+//
+//      // Modify each instance.
+//      for _, s := range codecs {
+//             if cookie, ok := s.(*securecookie.SecureCookie); ok {
+//                 cookie.MaxAge(86400 * 7)
+//                 cookie.SetSerializer(securecookie.JSONEncoder{})
+//                 cookie.HashFunc(sha512.New512_256)
+//             }
+//         }
+//
 func CodecsFromPairs(keyPairs ...[]byte) []Codec {
 	codecs := make([]Codec, len(keyPairs)/2+len(keyPairs)%2)
 	for i := 0; i < len(keyPairs); i += 2 {
