@@ -126,6 +126,10 @@ type Codec interface {
 // of the encryption algorithm. For AES, used by default, valid lengths are
 // 16, 24, or 32 bytes to select AES-128, AES-192, or AES-256.
 // The default encoder used for cookie serialization is encoding/gob.
+//
+// Note that keys created using GenerateRandomKey() are not automatically
+// persisted. New keys will be created when the application is restarted, and
+// previously issued cookies will not be able to be decoded.
 func New(hashKey, blockKey []byte) *SecureCookie {
 	s := &SecureCookie{
 		hashKey:   hashKey,
@@ -474,6 +478,9 @@ func decode(value []byte) ([]byte, error) {
 
 // GenerateRandomKey creates a random key with the given length in bytes.
 // On failure, returns nil.
+//
+// Callers should explicitly check for the possibility of a nil return, treat
+// it as a failure of the system random number generator, and not continue.
 func GenerateRandomKey(length int) []byte {
 	k := make([]byte, length)
 	if _, err := io.ReadFull(rand.Reader, k); err != nil {
