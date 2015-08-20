@@ -372,7 +372,9 @@ func createMac(h hash.Hash, value []byte) []byte {
 // verifyMac verifies that a message authentication code (MAC) is valid.
 func verifyMac(h hash.Hash, value []byte, mac []byte) error {
 	mac2 := createMac(h, value)
-	if subtle.ConstantTimeCompare(mac, mac2) == 1 {
+	// Check that both MACs are of equal length, as subtle.ConstantTimeCompare
+	// does not do this prior to Go 1.4.
+	if len(mac) == len(mac2) && subtle.ConstantTimeCompare(mac, mac2) == 1 {
 		return nil
 	}
 	return ErrMacInvalid
