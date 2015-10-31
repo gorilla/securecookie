@@ -19,8 +19,22 @@ import (
 	"hash"
 	"io"
 	"strconv"
+	"sync"
 	"time"
 )
+
+// bufferPool is a re-usable, garbage collected pool of *bytes.Buffers for
+// encoding/decoding into.
+var bufferPool = sync.Pool{New: func() interface{} {
+	return bytes.NewBuffer(nil)
+}}
+
+// getBuffer returns a buffer from the pool that is safe for use (has been reset).
+func getBuffer() *bytes.Buffer {
+	buf := bufferPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	return buf
+}
 
 // Codec defines an interface to encode and decode cookie values.
 type Codec interface {
@@ -333,7 +347,9 @@ func decrypt(block cipher.Block, value []byte) ([]byte, error) {
 
 // Serialize encodes a value using gob.
 func (e GobEncoder) Serialize(src interface{}) ([]byte, error) {
-	buf := new(bytes.Buffer)
+	buf := getBuffer()
+	defer bufferPool.Put(buf)
+
 	enc := gob.NewEncoder(buf)
 	if err := enc.Encode(src); err != nil {
 		return nil, cookieError{cause: err, typ: usageError}
@@ -352,7 +368,9 @@ func (e GobEncoder) Deserialize(src []byte, dst interface{}) error {
 
 // Serialize encodes a value using encoding/json.
 func (e JSONEncoder) Serialize(src interface{}) ([]byte, error) {
-	buf := new(bytes.Buffer)
+	buf := getBuffer()
+	defer bufferPool.Put(buf)
+
 	enc := json.NewEncoder(buf)
 	if err := enc.Encode(src); err != nil {
 		return nil, cookieError{cause: err, typ: usageError}
