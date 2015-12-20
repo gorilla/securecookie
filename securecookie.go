@@ -162,7 +162,8 @@ type SecureCookie struct {
 	sz        Serializer
 	// For testing purposes, the function that returns the current timestamp.
 	// If not set, it will use time.Now().UTC().Unix().
-	timeFunc func() int64
+	timeFunc      func() int64
+	LastTimestamp int64
 }
 
 // Serializer provides an interface for providing custom serializers for cookie
@@ -294,6 +295,8 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 // it was stored. The value argument is the encoded cookie value. The dst
 // argument is where the cookie will be decoded. It must be a pointer.
 func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
+	// Don't leak previous cookie timestamps with an early failure of this method
+	s.LastTimestamp = 0
 	if s.err != nil {
 		return s.err
 	}
@@ -325,6 +328,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	if t1, err = strconv.ParseInt(string(parts[0]), 10, 64); err != nil {
 		return errTimestampInvalid
 	}
+	s.LastTimestamp = t1
 	t2 := s.timestamp()
 	if s.minAge != 0 && t1 > t2-s.minAge {
 		return errTimestampTooNew

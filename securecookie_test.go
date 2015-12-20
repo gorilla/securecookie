@@ -272,3 +272,15 @@ func TestCustomType(t *testing.T) {
 		t.Fatalf("Expected %#v, got %#v", src, dst)
 	}
 }
+
+func TestLastTimestamp(t *testing.T) {
+	var v, tt int64 = 1234, 4567
+	s1 := New([]byte("12345"), []byte("1234567890123456"))
+	s1.timeFunc = func() int64 { return tt }
+
+	encoded, _ := s1.Encode("sid", v)
+	s1.Decode("sid", encoded, v)
+	if s1.LastTimestamp != tt {
+		t.Fatalf("Expected %v, got %v", tt, s1.LastTimestamp)
+	}
+}
