@@ -32,7 +32,7 @@ func (e GobEncoder) Serialize(src interface{}) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := gob.NewEncoder(buf)
 	if err := enc.Encode(src); err != nil {
-		return nil, cookieError{cause: err, typ: usageError}
+		return nil, cookieError{cause: err, kind: usageError}
 	}
 	return buf.Bytes(), nil
 }
@@ -41,7 +41,7 @@ func (e GobEncoder) Serialize(src interface{}) ([]byte, error) {
 func (e GobEncoder) Deserialize(src []byte, dst interface{}) error {
 	dec := gob.NewDecoder(bytes.NewBuffer(src))
 	if err := dec.Decode(dst); err != nil {
-		return cookieError{cause: err, typ: decodeError}
+		return cookieError{cause: err, kind: decodeError}
 	}
 	return nil
 }
@@ -51,7 +51,7 @@ func (e JSONEncoder) Serialize(src interface{}) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	enc := json.NewEncoder(buf)
 	if err := enc.Encode(src); err != nil {
-		return nil, cookieError{cause: err, typ: usageError}
+		return nil, cookieError{cause: err, kind: usageError}
 	}
 	return buf.Bytes(), nil
 }
@@ -60,7 +60,7 @@ func (e JSONEncoder) Serialize(src interface{}) ([]byte, error) {
 func (e JSONEncoder) Deserialize(src []byte, dst interface{}) error {
 	dec := json.NewDecoder(bytes.NewReader(src))
 	if err := dec.Decode(dst); err != nil {
-		return cookieError{cause: err, typ: decodeError}
+		return cookieError{cause: err, kind: decodeError}
 	}
 	return nil
 }

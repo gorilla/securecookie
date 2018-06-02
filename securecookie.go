@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"strconv"
 	"strings"
@@ -64,14 +65,14 @@ const (
 )
 
 type cookieError struct {
-	typ   errorType
+	kind  errorType
 	msg   string
 	cause error
 }
 
-func (e cookieError) IsUsage() bool    { return (e.typ & usageError) != 0 }
-func (e cookieError) IsDecode() bool   { return (e.typ & decodeError) != 0 }
-func (e cookieError) IsInternal() bool { return (e.typ & internalError) != 0 }
+func (e cookieError) IsUsage() bool    { return (e.kind & usageError) != 0 }
+func (e cookieError) IsDecode() bool   { return (e.kind & decodeError) != 0 }
+func (e cookieError) IsInternal() bool { return (e.kind & internalError) != 0 }
 
 func (e cookieError) Cause() error { return e.cause }
 
@@ -85,37 +86,21 @@ func (e cookieError) Error() string {
 	if c := e.Cause(); c != nil {
 		parts = append(parts, " - caused by: ", c.Error())
 	}
+
 	return strings.Join(parts, "")
 }
 
 var (
-	errGeneratingIV        = cookieError{typ: internalError, msg: "failed to generate random iv"}
-	errNoCodecs            = cookieError{typ: usageError, msg: "no codecs provided"}
-	errHashKeyNotSet       = cookieError{typ: usageError, msg: "hash key is not set"}
-	errBlockKeyNotSet      = cookieError{typ: usageError, msg: "block key is not set"}
-	errEncodedValueTooLong = cookieError{typ: usageError, msg: "the value is too long"}
-
-	errValueToDecodeTooLong = cookieError{typ: decodeError, msg: "the value is too long"}
-	errTimestampInvalid     = cookieError{typ: decodeError, msg: "invalid timestamp"}
-	errTimestampTooNew      = cookieError{typ: decodeError, msg: "timestamp is too new"}
-	errTimestampExpired     = cookieError{typ: decodeError, msg: "expired timestamp"}
-	errDecryptionFailed     = cookieError{typ: decodeError, msg: "the value could not be decrypted"}
-	errValueNotByte         = cookieError{typ: decodeError, msg: "value not a []byte."}
-	errValueNotBytePtr      = cookieError{typ: decodeError, msg: "value not a pointer to []byte."}
-
-	// ErrMacInvalid indicates that cookie decoding failed because the HMAC
-	// could not be extracted and verified.  Direct use of this error
-	// variable is deprecated; it is public only for legacy compatibility,
-	// and may be privatized in the future, as it is rarely useful to
-	// distinguish between this error and other Error implementations.
-	ErrMacInvalid = cookieError{typ: decodeError, msg: "the value is not valid"}
+	errEncodedValueTooLong  = cookieError{kind: usageError, msg: "the value is too long"}
+	errInvalidKey           = cookieError{kind: usageError, msg: fmt.Sprintf("the provided key is invalid. It must be %d bytes long", keyLength)}
+	errValueToDecodeTooLong = cookieError{kind: decodeError, msg: "the value is too long"}
+	errTimestampInvalid     = cookieError{kind: decodeError, msg: "invalid timestamp"}
+	errTimestampTooNew      = cookieError{kind: decodeError, msg: "timestamp is too new"}
+	errTimestampExpired     = cookieError{kind: decodeError, msg: "expired timestamp"}
+	errValueNotByte         = cookieError{kind: decodeError, msg: "value not a []byte."}
+	errValueNotBytePtr      = cookieError{kind: decodeError, msg: "value not a pointer to []byte."}
+	errDecryptionFailed     = cookieError{kind: decodeError, msg: "could not securely decrypt the provided cookie"}
 )
-
-type cookie struct {
-	Name      string
-	Timestamp int64
-	Value     []byte
-}
 
 // New returns a new SecureCookie.
 //
