@@ -61,7 +61,6 @@ type errorType int
 const (
 	usageError = errorType(1 << iota)
 	decodeError
-	internalError
 )
 
 type cookieError struct {
@@ -70,24 +69,33 @@ type cookieError struct {
 	cause error
 }
 
-func (e cookieError) IsUsage() bool    { return (e.kind & usageError) != 0 }
-func (e cookieError) IsDecode() bool   { return (e.kind & decodeError) != 0 }
-func (e cookieError) IsInternal() bool { return (e.kind & internalError) != 0 }
+// IsUsage indicates whether the error was caused by programmer error or bad
+// input.
+func (e cookieError) IsUsage() bool { return (e.kind & usageError) != 0 }
 
+// IsDecode indicates whether the error was caused by attempting to decode an
+// invalid cookie.
+func (e cookieError) IsDecode() bool { return (e.kind & decodeError) != 0 }
+
+// Cause returns the underlying error, if any, that triggered this error.
 func (e cookieError) Cause() error { return e.cause }
 
+// Error builds an error string, unrolling any nested errors and returning their
+// causes.
 func (e cookieError) Error() string {
-	parts := []string{"securecookie: "}
-	if e.msg == "" {
-		parts = append(parts, "error")
+	var b strings.Builder
+	b.WriteString("securecookie: ")
+	if e.msg != "" {
+		b.WriteString(e.msg)
 	} else {
-		parts = append(parts, e.msg)
-	}
-	if c := e.Cause(); c != nil {
-		parts = append(parts, " - caused by: ", c.Error())
+		b.WriteString("error")
 	}
 
-	return strings.Join(parts, "")
+	if cause := e.Cause(); cause != nil {
+		b.WriteString("- caused by: " + cause.Error())
+	}
+
+	return b.String()
 }
 
 var (
