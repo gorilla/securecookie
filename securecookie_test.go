@@ -74,6 +74,28 @@ func TestSecureCookie(t *testing.T) {
 	}
 }
 
+func TestSecureCookieKeyRotation(t *testing.T) {
+	s1 := New([]byte("12345"), nil)
+	s2 := New([]byte("54321"), nil, []byte("12345"))
+	value := map[string]interface{}{
+		"foo": "bar",
+		"baz": 128,
+	}
+
+	encoded, err1 := s1.Encode("sid", value)
+	if err1 != nil {
+		t.Fatal(err1)
+	}
+	dst := make(map[string]interface{})
+	err2 := s2.Decode("sid", encoded, &dst)
+	if err2 != nil {
+		t.Fatalf("%v: %v", err2, encoded)
+	}
+	if !reflect.DeepEqual(dst, value) {
+		t.Fatalf("Expected %v, got %v.", value, dst)
+	}
+}
+
 func TestSecureCookieNilKey(t *testing.T) {
 	s1 := New(nil, nil)
 	value := map[string]interface{}{

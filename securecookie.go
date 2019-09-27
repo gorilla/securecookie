@@ -129,17 +129,21 @@ type Codec interface {
 // 16, 24, or 32 bytes to select AES-128, AES-192, or AES-256.
 // The default encoder used for cookie serialization is encoding/gob.
 //
+// decodeKeys are optional, used to authenticate during decoding if the hashKey
+// fails. This allows older hashKeys to be verified during routine key rotation.
+//
 // Note that keys created using GenerateRandomKey() are not automatically
 // persisted. New keys will be created when the application is restarted, and
 // previously issued cookies will not be able to be decoded.
-func New(hashKey, blockKey []byte) *SecureCookie {
+func New(hashKey, blockKey []byte, decodeKeys ...[]byte) *SecureCookie {
 	s := &SecureCookie{
-		hashKey:   hashKey,
-		blockKey:  blockKey,
-		hashFunc:  sha256.New,
-		maxAge:    86400 * 30,
-		maxLength: 4096,
-		sz:        GobEncoder{},
+		hashKey:    hashKey,
+		decodeKeys: decodeKeys,
+		blockKey:   blockKey,
+		hashFunc:   sha256.New,
+		maxAge:     86400 * 30,
+		maxLength:  4096,
+		sz:         GobEncoder{},
 	}
 	if len(hashKey) == 0 {
 		s.err = errHashKeyNotSet
@@ -153,15 +157,16 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 // SecureCookie encodes and decodes authenticated and optionally encrypted
 // cookie values.
 type SecureCookie struct {
-	hashKey   []byte
-	hashFunc  func() hash.Hash
-	blockKey  []byte
-	block     cipher.Block
-	maxLength int
-	maxAge    int64
-	minAge    int64
-	err       error
-	sz        Serializer
+	hashKey    []byte
+	decodeKeys [][]byte
+	hashFunc   func() hash.Hash
+	blockKey   []byte
+	block      cipher.Block
+	maxLength  int
+	maxAge     int64
+	minAge     int64
+	err        error
+	sz         Serializer
 	// For testing purposes, the function that returns the current timestamp.
 	// If not set, it will use time.Now().UTC().Unix().
 	timeFunc func() int64
@@ -322,10 +327,18 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	if len(parts) != 3 {
 		return ErrMacInvalid
 	}
-	h := hmac.New(s.hashFunc, s.hashKey)
 	b = append([]byte(name+"|"), b[:len(b)-len(parts[2])-1]...)
+	h := hmac.New(s.hashFunc, s.hashKey)
 	if err = verifyMac(h, b, parts[2]); err != nil {
-		return err
+		for i := range s.decodeKeys {
+			h = hmac.New(s.hashFunc, s.decodeKeys[i])
+			if err = verifyMac(h, b, parts[2]); err == nil {
+				break
+			}
+		}
+		if err != nil {
+			return err
+		}
 	}
 	// 4. Verify date ranges.
 	var t1 int64
