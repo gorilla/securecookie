@@ -83,6 +83,8 @@ Rotating keys is an important part of any security strategy. The `EncodeMulti` a
 For example, let's take a system that stores keys in a map:
 
 ```go
+// keys stored in a map will not be persisted between restarts
+// a more persistent storage should be considered for production applications.
 var cookies = map[string]*securecookie.SecureCookie{
 	"previous": securecookie.New(
 		securecookie.GenerateRandomKey(64),
@@ -94,10 +96,6 @@ var cookies = map[string]*securecookie.SecureCookie{
 	),
 }
 ```
-It's important to point out that keys stored in a map would not be persisted
-between restarts, a more persistent storage should be considered for production
-applications.
-
 
 Using the current key to encode new cookies:
 ```go
