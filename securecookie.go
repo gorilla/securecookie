@@ -299,8 +299,9 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 		b = append(b, mac...)
 	} else {
 		// 3. Create MAC for concatenation of name, date and value.
-		b = append(make([]byte, 8, 8+len(b)+s.compactMacSize()), b...)
-		binary.BigEndian.PutUint64(b, uint64(s.timestamp()))
+		t := make([]byte, binary.MaxVarintLen64, binary.MaxVarintLen64+len(b)+s.compactMacSize())
+		tl := binary.PutVarint(t[:], s.timestamp())
+		b = append(t[:tl], b...)
 		mac := createMac(s.createHMAC(true), name, b)
 		// Append mac
 		b = append(b, mac...)
@@ -384,9 +385,10 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 			return err
 		}
 		// extract timestamp
-		t1 = int64(binary.BigEndian.Uint64(b))
+		var tl int
+		t1, tl = binary.Varint(b)
 		// extract payload
-		b = b[8:]
+		b = b[tl:]
 	}
 	// 4. Verify date ranges.
 	t2 := s.timestamp()

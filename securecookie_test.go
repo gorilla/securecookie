@@ -45,7 +45,7 @@ func TestSecureCookie(t *testing.T) {
 			t.Error(err1)
 			continue
 		}
-		t.Log("i", i, "len", len(encoded))
+		t.Log("i", i, "len", len(encoded), "c", encoded)
 		dst := make(map[string]interface{})
 		err2 := s1.Decode("sid", encoded, &dst)
 		if err2 != nil {
