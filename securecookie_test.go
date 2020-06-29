@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"math/rand"
 	"reflect"
 	"strings"
 	"testing"
@@ -34,6 +35,7 @@ func TestSecureCookie(t *testing.T) {
 		"foo": "bar",
 		"baz": 128,
 	}
+	rng := rand.New(rand.NewSource(1))
 
 	for i := 0; i < 50; i++ {
 		// Running this multiple times to check if any special character
@@ -43,6 +45,7 @@ func TestSecureCookie(t *testing.T) {
 			t.Error(err1)
 			continue
 		}
+		t.Log("i", i, "len", len(encoded))
 		dst := make(map[string]interface{})
 		err2 := s1.Decode("sid", encoded, &dst)
 		if err2 != nil {
@@ -71,6 +74,12 @@ func TestSecureCookie(t *testing.T) {
 		if err4.IsInternal() {
 			t.Fatalf("Expected IsInternal() == false, got: %#v", err4)
 		}
+
+		value["foo"] = string(append([]rune("bar"), rune(rng.Int31n(1024)+1)))
+		value["baz"] = rng.Intn(1000000)
+
+		s1.Compact(i&1 == 0)
+		s2.Compact(i&2 == 0)
 	}
 }
 
@@ -120,9 +129,9 @@ func TestAuthentication(t *testing.T) {
 	hash := hmac.New(sha256.New, []byte("secret-key"))
 	for _, value := range testStrings {
 		hash.Reset()
-		signed := createMac(hash, []byte(value))
+		signed := createMac(hash, "prefix", []byte(value))
 		hash.Reset()
-		err := verifyMac(hash, []byte(value), signed)
+		err := verifyMac(hash, "prefix", []byte(value), signed)
 		if err != nil {
 			t.Error(err)
 		}

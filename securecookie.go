@@ -13,6 +13,7 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/gob"
 	"encoding/json"
 	"fmt"
@@ -137,6 +138,7 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 		hashKey:   hashKey,
 		blockKey:  blockKey,
 		hashFunc:  sha256.New,
+		macSize:   sha256.New().Size(),
 		maxAge:    86400 * 30,
 		maxLength: 4096,
 		sz:        GobEncoder{},
@@ -155,12 +157,14 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 type SecureCookie struct {
 	hashKey   []byte
 	hashFunc  func() hash.Hash
+	macSize   int
 	blockKey  []byte
 	block     cipher.Block
 	maxLength int
 	maxAge    int64
 	minAge    int64
 	err       error
+	compact   bool
 	sz        Serializer
 	// For testing purposes, the function that returns the current timestamp.
 	// If not set, it will use time.Now().UTC().Unix().
@@ -217,6 +221,7 @@ func (s *SecureCookie) MinAge(value int) *SecureCookie {
 // Default is crypto/sha256.New.
 func (s *SecureCookie) HashFunc(f func() hash.Hash) *SecureCookie {
 	s.hashFunc = f
+	s.macSize = f().Size()
 	return s
 }
 
@@ -240,6 +245,15 @@ func (s *SecureCookie) BlockFunc(f func([]byte) (cipher.Block, error)) *SecureCo
 // they must be registered first using gob.Register().
 func (s *SecureCookie) SetSerializer(sz Serializer) *SecureCookie {
 	s.sz = sz
+
+	return s
+}
+
+// Compact sets compact but backward incompatible encoding format.
+//
+// Default is false
+func (s *SecureCookie) Compact(c bool) *SecureCookie {
+	s.compact = c
 
 	return s
 }
@@ -276,12 +290,21 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 			return "", cookieError{cause: err, typ: usageError}
 		}
 	}
-	b = encode(b)
-	// 3. Create MAC for "name|date|value". Extra pipe to be used later.
-	b = []byte(fmt.Sprintf("%s|%d|%s|", name, s.timestamp(), b))
-	mac := createMac(hmac.New(s.hashFunc, s.hashKey), b[:len(b)-1])
-	// Append mac, remove name.
-	b = append(b, mac...)[len(name)+1:]
+	if !s.compact {
+		b = encode(b)
+		// 3. Create MAC for "name|date|value". Extra pipe to be used later.
+		b = []byte(fmt.Sprintf("%d|%s|", s.timestamp(), b))
+		mac := createMac(s.createHMAC(false), name+"|", b[:len(b)-1])
+		// Append mac
+		b = append(b, mac...)
+	} else {
+		// 3. Create MAC for concatenation of name, date and value.
+		b = append(make([]byte, 8, 8+len(b)+s.compactMacSize()), b...)
+		binary.BigEndian.PutUint64(b, uint64(s.timestamp()))
+		mac := createMac(s.createHMAC(true), name, b)
+		// Append mac
+		b = append(b, mac...)
+	}
 	// 4. Encode to base64.
 	b = encode(b)
 	// 5. Check length.
@@ -290,6 +313,21 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	}
 	// Done.
 	return string(b), nil
+}
+
+func (s *SecureCookie) createHMAC(compact bool) hash.Hash {
+	h := hmac.New(s.hashFunc, s.hashKey)
+	if compact && s.macSize > 16 {
+		return compactHash{h}
+	}
+	return h
+}
+
+func (s *SecureCookie) compactMacSize() int {
+	if s.macSize > 16 {
+		return 16
+	}
+	return s.macSize
 }
 
 // Decode decodes a cookie value.
@@ -317,21 +355,40 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	if err != nil {
 		return err
 	}
-	// 3. Verify MAC. Value is "date|value|mac".
-	parts := bytes.SplitN(b, []byte("|"), 3)
-	if len(parts) != 3 {
-		return ErrMacInvalid
-	}
-	h := hmac.New(s.hashFunc, s.hashKey)
-	b = append([]byte(name+"|"), b[:len(b)-len(parts[2])-1]...)
-	if err = verifyMac(h, b, parts[2]); err != nil {
-		return err
+	var t1 int64
+	h := s.createHMAC(s.compact)
+	if !s.compact {
+		// 3. Verify MAC. Value is "date|value|mac".
+		parts := bytes.SplitN(b, []byte("|"), 3)
+		if len(parts) != 3 {
+			return ErrMacInvalid
+		}
+		b = b[:len(b)-len(parts[2])-1]
+		if err = verifyMac(h, name+"|", b, parts[2]); err != nil {
+			return err
+		}
+		// extract timestamp
+		if t1, err = strconv.ParseInt(string(parts[0]), 10, 64); err != nil {
+			return errTimestampInvalid
+		}
+		// extract payload
+		b, err = decode(parts[1])
+		if err != nil {
+			return err
+		}
+	} else {
+		macStart := len(b) - s.compactMacSize()
+		mac := b[macStart:]
+		b = b[:macStart]
+		if err = verifyMac(h, name, b, mac); err != nil {
+			return err
+		}
+		// extract timestamp
+		t1 = int64(binary.BigEndian.Uint64(b))
+		// extract payload
+		b = b[8:]
 	}
 	// 4. Verify date ranges.
-	var t1 int64
-	if t1, err = strconv.ParseInt(string(parts[0]), 10, 64); err != nil {
-		return errTimestampInvalid
-	}
 	t2 := s.timestamp()
 	if s.minAge != 0 && t1 > t2-s.minAge {
 		return errTimestampTooNew
@@ -340,10 +397,6 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 		return errTimestampExpired
 	}
 	// 5. Decrypt (optional).
-	b, err = decode(parts[1])
-	if err != nil {
-		return err
-	}
 	if s.block != nil {
 		if b, err = decrypt(s.block, b); err != nil {
 			return err
@@ -371,14 +424,15 @@ func (s *SecureCookie) timestamp() int64 {
 // Authentication -------------------------------------------------------------
 
 // createMac creates a message authentication code (MAC).
-func createMac(h hash.Hash, value []byte) []byte {
+func createMac(h hash.Hash, prefix string, value []byte) []byte {
+	h.Write([]byte(prefix))
 	h.Write(value)
 	return h.Sum(nil)
 }
 
 // verifyMac verifies that a message authentication code (MAC) is valid.
-func verifyMac(h hash.Hash, value []byte, mac []byte) error {
-	mac2 := createMac(h, value)
+func verifyMac(h hash.Hash, prefix string, value []byte, mac []byte) error {
+	mac2 := createMac(h, prefix, value)
 	// Check that both MACs are of equal length, as subtle.ConstantTimeCompare
 	// does not do this prior to Go 1.4.
 	if len(mac) == len(mac2) && subtle.ConstantTimeCompare(mac, mac2) == 1 {
@@ -647,4 +701,18 @@ func (m MultiError) any(pred func(Error) bool) bool {
 		}
 	}
 	return false
+}
+
+type compactHash struct {
+	hash.Hash
+}
+
+func (ch compactHash) Size() int {
+	return 16
+}
+
+func (ch compactHash) Sum(b []byte) []byte {
+	origLen := len(b)
+	b = ch.Hash.Sum(b)
+	return b[:origLen+16]
 }
