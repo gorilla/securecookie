@@ -89,20 +89,24 @@ func (e cookieError) Error() string {
 }
 
 var (
-	errGeneratingIV = cookieError{typ: internalError, msg: "failed to generate random iv"}
+	errGeneratingIV  = cookieError{typ: internalError, msg: "failed to generate random iv"}
+	errGeneratingMAC = cookieError{typ: internalError, msg: "failed to generate mac"}
 
 	errNoCodecs            = cookieError{typ: usageError, msg: "no codecs provided"}
 	errHashKeyNotSet       = cookieError{typ: usageError, msg: "hash key is not set"}
 	errBlockKeyNotSet      = cookieError{typ: usageError, msg: "block key is not set"}
 	errEncodedValueTooLong = cookieError{typ: usageError, msg: "the value is too long"}
 
-	errValueToDecodeTooLong = cookieError{typ: decodeError, msg: "the value is too long"}
-	errTimestampInvalid     = cookieError{typ: decodeError, msg: "invalid timestamp"}
-	errTimestampTooNew      = cookieError{typ: decodeError, msg: "timestamp is too new"}
-	errTimestampExpired     = cookieError{typ: decodeError, msg: "expired timestamp"}
-	errDecryptionFailed     = cookieError{typ: decodeError, msg: "the value could not be decrypted"}
-	errValueNotByte         = cookieError{typ: decodeError, msg: "value not a []byte."}
-	errValueNotBytePtr      = cookieError{typ: decodeError, msg: "value not a pointer to []byte."}
+	errValueToDecodeTooLong  = cookieError{typ: decodeError, msg: "the value is too long"}
+	errTimestampInvalid      = cookieError{typ: decodeError, msg: "invalid timestamp"}
+	errTimestampTooNew       = cookieError{typ: decodeError, msg: "timestamp is too new"}
+	errTimestampExpired      = cookieError{typ: decodeError, msg: "expired timestamp"}
+	errDecryptionFailed      = cookieError{typ: decodeError, msg: "the value could not be decrypted"}
+	errValueNotByte          = cookieError{typ: decodeError, msg: "value not a []byte."}
+	errValueNotBytePtr       = cookieError{typ: decodeError, msg: "value not a pointer to []byte."}
+	errNameTooLong           = cookieError{typ: usageError, msg: "cookie name is too long"}
+	errValueToDecodeTooShort = cookieError{typ: decodeError, msg: "the value is too short"}
+	errVersionDoesntMatch    = cookieError{typ: decodeError, msg: "value version unknown"}
 
 	// ErrMacInvalid indicates that cookie decoding failed because the HMAC
 	// could not be extracted and verified.  Direct use of this error
@@ -147,6 +151,7 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 	if blockKey != nil {
 		s.BlockFunc(aes.NewCipher)
 	}
+	s.prepareCompactKeys()
 	return s
 }
 
@@ -162,9 +167,10 @@ type SecureCookie struct {
 	minAge    int64
 	err       error
 	sz        Serializer
-	// For testing purposes, the function that returns the current timestamp.
-	// If not set, it will use time.Now().UTC().Unix().
-	timeFunc func() int64
+
+	compactHashKey  [keyLen]byte
+	compactBlockKey [keyLen]byte
+	genCompact      bool
 }
 
 // Serializer provides an interface for providing custom serializers for cookie
@@ -244,6 +250,16 @@ func (s *SecureCookie) SetSerializer(sz Serializer) *SecureCookie {
 	return s
 }
 
+// Compact sets generation mode.
+//
+// If set to true, then compact encoding will be used for cookie.
+// Note, it will use Blake2b as a hash function and ChaCha20 as a cipher
+// exclusively. And hash key and block key will be derived with Blake2b.
+func (s *SecureCookie) Compact(c bool) *SecureCookie {
+	s.genCompact = c
+	return s
+}
+
 // Encode encodes a cookie value.
 //
 // It serializes, optionally encrypts, signs with a message authentication code,
@@ -270,6 +286,11 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	if b, err = s.sz.Serialize(value); err != nil {
 		return "", cookieError{cause: err, typ: usageError}
 	}
+
+	if s.genCompact {
+		return s.encodeCompact(name, b)
+	}
+
 	// 2. Encrypt (optional).
 	if s.block != nil {
 		if b, err = encrypt(s.block, b); err != nil {
@@ -311,6 +332,9 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	// 1. Check length.
 	if s.maxLength != 0 && len(value) > s.maxLength {
 		return errValueToDecodeTooLong
+	}
+	if len(value) > 0 && value[0] == 'A' { // first byte of decoded value is less than 0x04
+		return s.decodeCompact(name, value, dst)
 	}
 	// 2. Decode from base64.
 	b, err := decode([]byte(value))
