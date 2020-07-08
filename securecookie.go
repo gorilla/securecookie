@@ -278,7 +278,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	}
 	b = encode(b)
 	// 3. Create MAC for "name|date|value". Extra pipe to be used later.
-	b = []byte(fmt.Sprintf("%s|%d|%s|", name, s.timestamp(), b))
+	b = []byte(fmt.Sprintf("%s|%d|%s|", name, timestamp(), b))
 	mac := createMac(hmac.New(s.hashFunc, s.hashKey), b[:len(b)-1])
 	// Append mac, remove name.
 	b = append(b, mac...)[len(name)+1:]
@@ -332,7 +332,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	if t1, err = strconv.ParseInt(string(parts[0]), 10, 64); err != nil {
 		return errTimestampInvalid
 	}
-	t2 := s.timestamp()
+	t2 := timestamp()
 	if s.minAge != 0 && t1 > t2-s.minAge {
 		return errTimestampTooNew
 	}
@@ -357,15 +357,20 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	return nil
 }
 
+var faketsnano int64
+
+func timestampNano() int64 {
+	if faketsnano != 0 {
+		return faketsnano
+	}
+	return time.Now().UnixNano()
+}
+
 // timestamp returns the current timestamp, in seconds.
 //
-// For testing purposes, the function that generates the timestamp can be
-// overridden. If not set, it will return time.Now().UTC().Unix().
-func (s *SecureCookie) timestamp() int64 {
-	if s.timeFunc == nil {
-		return time.Now().UTC().Unix()
-	}
-	return s.timeFunc()
+// For For testing purposes, one could override faketsnano variable.
+func timestamp() int64 {
+	return timestampNano() / 1000000000
 }
 
 // Authentication -------------------------------------------------------------
