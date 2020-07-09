@@ -77,6 +77,24 @@ registered first using gob.Register(). For basic types this is not needed;
 it works out of the box. An optional JSON encoder that uses `encoding/json` is
 available for types compatible with JSON.
 
+### Compact Encoding
+
+Original encoding adds a lot of unnecessary overhead for encoded value.
+Therefore new encoding is added to reduce length of cookie. To simplify
+migration, same SecureCookie instance may decode both original and compact
+encodings, but generates those you choose to. By default original encoding
+is used therefore you may safely update this library without code change.
+
+```go
+var s = securecookie.New(hashKey, blockKey)
+s.Compact(true) // enable generation of compact encoding.
+s.Compact(false) // disable generation of compact encoding. It is default.
+```
+
+Not that algorithms are fixed with compact encoding: ChaCha20 is used for
+stream cipher and Blake2s is used as a MAC and key expansion (to meet ChaCha20
+requirements for key length).
+
 ### Key Rotation
 Rotating keys is an important part of any security strategy. The `EncodeMulti` and
 `DecodeMulti` functions allow for multiple keys to be rotated in and out.
