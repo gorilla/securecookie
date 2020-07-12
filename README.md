@@ -92,7 +92,7 @@ s.Compact(false) // disable generation of compact encoding. It is default.
 ```
 
 Not that algorithms are fixed with compact encoding: ChaCha20 is used for
-stream cipher and Blake2s is used as a MAC and key expansion (to meet ChaCha20
+stream cipher and HMAC-SHA256 is used as a MAC and key expansion (to meet ChaCha20
 requirements for key length).
 
 ### Key Rotation

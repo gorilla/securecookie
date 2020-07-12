@@ -169,7 +169,7 @@ type SecureCookie struct {
 	sz        Serializer
 
 	compactBlockKey [keyLen]byte
-	macPool         sync.Pool
+	macPool         *sync.Pool
 	genCompact      bool
 }
 

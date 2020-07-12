@@ -1,12 +1,14 @@
 package securecookie
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/base64"
 	"encoding/binary"
 	"hash"
+	"sync"
 
-	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20"
 )
 
@@ -20,17 +22,15 @@ const (
 )
 
 func (s *SecureCookie) prepareCompact() {
-	// initialize for compact encoding even if no genCompact set to allow
-	// two step migration.
-	hashKey := blake2s.Sum256(s.hashKey)
-
-	bl, _ := blake2s.New256(hashKey[:])
+	bl := hmac.New(sha256.New, s.hashKey)
 	_, _ = bl.Write(s.blockKey)
 	copy(s.compactBlockKey[:], bl.Sum(nil))
 
-	s.macPool.New = func() interface{} {
-		hsh, _ := blake2s.New128(hashKey[:])
-		return &macbuf{Hash: hsh}
+	s.macPool = &sync.Pool{
+		New: func() interface{} {
+			hsh := hmac.New(sha256.New, s.hashKey)
+			return &macbuf{Hash: hsh}
+		},
 	}
 }
 
@@ -110,12 +110,12 @@ func (s *SecureCookie) decodeCompact(name string, encoded string, dest interface
 type macbuf struct {
 	hash.Hash
 	nameLen [4]byte
-	sum     [16]byte
+	sum     [32]byte
 }
 
 func (m *macbuf) Reset() {
 	m.Hash.Reset()
-	m.sum = [16]byte{}
+	m.sum = [32]byte{}
 }
 
 func (s *SecureCookie) compactMac(header []byte, name string, body, mac []byte) {
