@@ -20,6 +20,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -89,20 +90,23 @@ func (e cookieError) Error() string {
 }
 
 var (
-	errGeneratingIV = cookieError{typ: internalError, msg: "failed to generate random iv"}
+	errGeneratingIV  = cookieError{typ: internalError, msg: "failed to generate random iv"}
+	errGeneratingMAC = cookieError{typ: internalError, msg: "failed to generate mac"}
 
 	errNoCodecs            = cookieError{typ: usageError, msg: "no codecs provided"}
 	errHashKeyNotSet       = cookieError{typ: usageError, msg: "hash key is not set"}
 	errBlockKeyNotSet      = cookieError{typ: usageError, msg: "block key is not set"}
 	errEncodedValueTooLong = cookieError{typ: usageError, msg: "the value is too long"}
 
-	errValueToDecodeTooLong = cookieError{typ: decodeError, msg: "the value is too long"}
-	errTimestampInvalid     = cookieError{typ: decodeError, msg: "invalid timestamp"}
-	errTimestampTooNew      = cookieError{typ: decodeError, msg: "timestamp is too new"}
-	errTimestampExpired     = cookieError{typ: decodeError, msg: "expired timestamp"}
-	errDecryptionFailed     = cookieError{typ: decodeError, msg: "the value could not be decrypted"}
-	errValueNotByte         = cookieError{typ: decodeError, msg: "value not a []byte."}
-	errValueNotBytePtr      = cookieError{typ: decodeError, msg: "value not a pointer to []byte."}
+	errValueToDecodeTooLong  = cookieError{typ: decodeError, msg: "the value is too long"}
+	errTimestampInvalid      = cookieError{typ: decodeError, msg: "invalid timestamp"}
+	errTimestampTooNew       = cookieError{typ: decodeError, msg: "timestamp is too new"}
+	errTimestampExpired      = cookieError{typ: decodeError, msg: "expired timestamp"}
+	errDecryptionFailed      = cookieError{typ: decodeError, msg: "the value could not be decrypted"}
+	errValueNotByte          = cookieError{typ: decodeError, msg: "value not a []byte."}
+	errValueNotBytePtr       = cookieError{typ: decodeError, msg: "value not a pointer to []byte."}
+	errValueToDecodeTooShort = cookieError{typ: decodeError, msg: "the value is too short"}
+	errVersionDoesntMatch    = cookieError{typ: decodeError, msg: "value version unknown"}
 
 	// ErrMacInvalid indicates that cookie decoding failed because the HMAC
 	// could not be extracted and verified.  Direct use of this error
@@ -147,6 +151,7 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 	if blockKey != nil {
 		s.BlockFunc(aes.NewCipher)
 	}
+	s.prepareCompact()
 	return s
 }
 
@@ -162,9 +167,10 @@ type SecureCookie struct {
 	minAge    int64
 	err       error
 	sz        Serializer
-	// For testing purposes, the function that returns the current timestamp.
-	// If not set, it will use time.Now().UTC().Unix().
-	timeFunc func() int64
+
+	compactBlockKey [keyLen]byte
+	macPool         *sync.Pool
+	genCompact      bool
 }
 
 // Serializer provides an interface for providing custom serializers for cookie
@@ -244,6 +250,16 @@ func (s *SecureCookie) SetSerializer(sz Serializer) *SecureCookie {
 	return s
 }
 
+// Compact sets generation mode.
+//
+// If set to true, then compact encoding will be used for cookie.
+// Note, it will use Blake2b as a hash function and ChaCha20 as a cipher
+// exclusively. And hash key and block key will be derived with Blake2b.
+func (s *SecureCookie) Compact(c bool) *SecureCookie {
+	s.genCompact = c
+	return s
+}
+
 // Encode encodes a cookie value.
 //
 // It serializes, optionally encrypts, signs with a message authentication code,
@@ -270,6 +286,11 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	if b, err = s.sz.Serialize(value); err != nil {
 		return "", cookieError{cause: err, typ: usageError}
 	}
+
+	if s.genCompact {
+		return s.encodeCompact(name, b)
+	}
+
 	// 2. Encrypt (optional).
 	if s.block != nil {
 		if b, err = encrypt(s.block, b); err != nil {
@@ -278,7 +299,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	}
 	b = encode(b)
 	// 3. Create MAC for "name|date|value". Extra pipe to be used later.
-	b = []byte(fmt.Sprintf("%s|%d|%s|", name, s.timestamp(), b))
+	b = []byte(fmt.Sprintf("%s|%d|%s|", name, timestamp(), b))
 	mac := createMac(hmac.New(s.hashFunc, s.hashKey), b[:len(b)-1])
 	// Append mac, remove name.
 	b = append(b, mac...)[len(name)+1:]
@@ -312,6 +333,9 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	if s.maxLength != 0 && len(value) > s.maxLength {
 		return errValueToDecodeTooLong
 	}
+	if len(value) > 0 && value[0] == 'A' { // first byte of decoded value is less than 0x04
+		return s.decodeCompact(name, value, dst)
+	}
 	// 2. Decode from base64.
 	b, err := decode([]byte(value))
 	if err != nil {
@@ -332,7 +356,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	if t1, err = strconv.ParseInt(string(parts[0]), 10, 64); err != nil {
 		return errTimestampInvalid
 	}
-	t2 := s.timestamp()
+	t2 := timestamp()
 	if s.minAge != 0 && t1 > t2-s.minAge {
 		return errTimestampTooNew
 	}
@@ -357,15 +381,20 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	return nil
 }
 
+var faketsnano int64
+
+func timestampNano() int64 {
+	if faketsnano != 0 {
+		return faketsnano
+	}
+	return time.Now().UnixNano()
+}
+
 // timestamp returns the current timestamp, in seconds.
 //
-// For testing purposes, the function that generates the timestamp can be
-// overridden. If not set, it will return time.Now().UTC().Unix().
-func (s *SecureCookie) timestamp() int64 {
-	if s.timeFunc == nil {
-		return time.Now().UTC().Unix()
-	}
-	return s.timeFunc()
+// For For testing purposes, one could override faketsnano variable.
+func timestamp() int64 {
+	return timestampNano() / 1000000000
 }
 
 // Authentication -------------------------------------------------------------

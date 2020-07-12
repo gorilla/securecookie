@@ -10,6 +10,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
+	"math/rand"
 	"reflect"
 	"strings"
 	"testing"
@@ -35,7 +36,13 @@ func TestSecureCookie(t *testing.T) {
 		"baz": 128,
 	}
 
+	rng := rand.New(rand.NewSource(1))
+
 	for i := 0; i < 50; i++ {
+		t.Log("i=", i)
+		s1.Compact(i&1 != 0)
+		s2.Compact(i&2 != 0)
+
 		// Running this multiple times to check if any special character
 		// breaks encoding/decoding.
 		encoded, err1 := s1.Encode("sid", value)
@@ -71,6 +78,20 @@ func TestSecureCookie(t *testing.T) {
 		if err4.IsInternal() {
 			t.Fatalf("Expected IsInternal() == false, got: %#v", err4)
 		}
+
+		// check compatibility
+		s1.Compact(!s1.genCompact)
+		dst3 := make(map[string]interface{})
+		err5 := s1.Decode("sid", encoded, &dst3)
+		if err5 != nil {
+			t.Fatalf("%v: %v", err5, encoded)
+		}
+		if !reflect.DeepEqual(dst3, value) {
+			t.Fatalf("Expected %v, got %v.", value, dst3)
+		}
+
+		value["foo"] = "bar" + string([]rune{rune(rng.Intn(1024) + 20)})
+		value["bas"] = rng.Intn(1000000)
 	}
 }
 
@@ -306,3 +327,49 @@ func TestCustomType(t *testing.T) {
 		t.Fatalf("Expected %#v, got %#v", src, dst)
 	}
 }
+
+const N = 250
+
+func benchmarkEncode(b *testing.B, compact bool) {
+	hk := make([]byte, 32)
+	bk := make([]byte, 32)
+	buf := make([]byte, N)
+	rand.Read(hk)
+	rand.Read(bk)
+	rand.Read(buf)
+	sec := New(hk, bk)
+	sec.SetSerializer(NopEncoder{})
+	sec.Compact(compact)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		v := buf[:rand.Intn(N-N/4)+N/4]
+		_, _ = sec.Encode("session", v)
+	}
+}
+
+func benchmarkDecode(b *testing.B, compact bool) {
+	hk := make([]byte, 32)
+	bk := make([]byte, 32)
+	buf := make([]byte, N)
+	rand.Read(hk)
+	rand.Read(bk)
+	rand.Read(buf)
+	sec := New(hk, bk)
+	sec.SetSerializer(NopEncoder{})
+	sec.Compact(compact)
+	vals := make([]string, 128)
+	for i := range vals {
+		v := buf[:rand.Intn(N-N/4)+N/4]
+		vals[i], _ = sec.Encode("session", v)
+	}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		var v []byte
+		_ = sec.Decode("session", vals[i&127], &v)
+	}
+}
+
+func BenchmarkLegacyEncode(b *testing.B)  { benchmarkEncode(b, false) }
+func BenchmarkCompactEncode(b *testing.B) { benchmarkEncode(b, true) }
+func BenchmarkLegacyDecode(b *testing.B)  { benchmarkDecode(b, false) }
+func BenchmarkCompactDecode(b *testing.B) { benchmarkDecode(b, true) }
