@@ -5,181 +5,155 @@ import (
 	"encoding/base64"
 	"encoding/binary"
 	"hash"
-	"sync"
 
 	"golang.org/x/crypto/blake2s"
 	"golang.org/x/crypto/chacha20"
 )
 
 const (
-	nameMaxLen = 127
-	keyLen     = 32
-	macLen     = 15
-	timeLen    = 8
-	versionLen = 1
-	version    = 0
+	nameMaxLen   = 127
+	keyLen       = 32
+	macLen       = 16
+	headerLen    = 8
+	macHeaderLen = macLen + headerLen
+	version      = 1
 )
 
-func (s *SecureCookie) prepareCompactKeys() {
+func (s *SecureCookie) prepareCompact() {
 	// initialize for compact encoding even if no genCompact set to allow
 	// two step migration.
-	s.compactHashKey = blake2s.Sum256(s.hashKey)
-	bl, _ := blake2s.New256(s.compactHashKey[:])
+	hashKey := blake2s.Sum256(s.hashKey)
+
+	bl, _ := blake2s.New256(hashKey[:])
 	_, _ = bl.Write(s.blockKey)
 	copy(s.compactBlockKey[:], bl.Sum(nil))
+
+	s.macPool.New = func() interface{} {
+		hsh, _ := blake2s.New128(hashKey[:])
+		return &macbuf{Hash: hsh}
+	}
 }
 
 func (s *SecureCookie) encodeCompact(name string, serialized []byte) (string, error) {
-	if len(name) > nameMaxLen {
-		return "", errNameTooLong
-	}
-
 	// Check length
-	encodedLen := base64.URLEncoding.EncodedLen(len(serialized) + macLen + timeLen + versionLen)
+	encodedLen := base64.URLEncoding.EncodedLen(len(serialized) + macLen + headerLen)
 	if s.maxLength != 0 && encodedLen > s.maxLength {
 		return "", errEncodedValueTooLong
 	}
 
 	// form message
-	r := make([]byte, versionLen+macLen+timeLen+len(serialized))
-	r[0] = version
-	m := r[versionLen:]
-	tag, body := m[:macLen], m[macLen:]
-	binary.LittleEndian.PutUint64(body, uint64(timeShift(timestampNano())))
-	copy(body[timeLen:], serialized)
+	r := make([]byte, headerLen+macLen+len(serialized))
+	macHeader, body := r[:macHeaderLen], r[macHeaderLen:]
+	copy(body, serialized)
+
+	header, mac := macHeader[:headerLen], macHeader[headerLen:]
+	binary.BigEndian.PutUint64(header, uint64(timeShift(timestampNano())))
+	header[0] = version // it is made free in timestamp
 
 	// Mac
-	s.compactMac(version, name, body, tag)
+	s.compactMac(header, name, body, mac)
 
 	// Encrypt (if needed)
-	s.compactXorStream(tag, body)
+	s.compactXorStream(macHeader, body)
 
 	// Encode
 	return base64.RawURLEncoding.EncodeToString(r), nil
 }
 
 func (s *SecureCookie) decodeCompact(name string, encoded string, dest interface{}) error {
-	if len(name) > nameMaxLen {
-		return errNameTooLong
-	}
-
 	decoded, err := base64.RawURLEncoding.DecodeString(encoded)
 	if err != nil {
 		return cookieError{cause: err, typ: decodeError, msg: "base64 decode failed"}
 	}
 
-	if len(encoded) < macLen+timeLen+versionLen {
+	if len(encoded) < macHeaderLen {
 		return errValueToDecodeTooShort
 	}
 
+	macHeader, body := decoded[:macHeaderLen], decoded[macHeaderLen:]
+	header, mac := macHeader[:headerLen], macHeader[headerLen:]
+
 	// Decompose
-	if decoded[0] != version {
+	if header[0] != version {
 		// there is only version currently
 		return errVersionDoesntMatch
 	}
 
-	m := decoded[versionLen:]
-	tag, body := m[:macLen], m[macLen:]
+	// Check time
+	ts := timeUnshift(int64(binary.BigEndian.Uint64(header)))
+	now := timestampNano()
+	if s.maxAge > 0 && ts+secs2nano(s.maxAge) < now {
+		return errTimestampExpired
+	}
+	if s.minAge > 0 && ts+secs2nano(s.minAge) > now {
+		return errTimestampExpired
+	}
 
 	// Decrypt (if need)
-	s.compactXorStream(tag, body)
+	s.compactXorStream(macHeader, body)
 
-	// Check time
-	ts := int64(binary.LittleEndian.Uint64(body))
-	now := timeShift(timestampNano())
-	if s.maxAge > 0 && ts+secsShift(s.maxAge) < now {
-		return errTimestampExpired
-	}
-	if s.minAge > 0 && ts+secsShift(s.minAge) > now {
-		return errTimestampExpired
-	}
-	if !timeValid(ts) {
-		// We are checking bytes we explicitely leaved as zero as preliminary
-		// MAC check. We could do it because ChaCha20 has no known plaintext
-		// issues.
-		return ErrMacInvalid
-	}
-
-	// Verify
-	var mac [macLen]byte
-	s.compactMac(version, name, body, mac[:])
-	if subtle.ConstantTimeCompare(mac[:], tag) == 0 {
+	// Check MAC
+	var macCheck [macLen]byte
+	s.compactMac(header, name, body, macCheck[:])
+	if subtle.ConstantTimeCompare(mac, macCheck[:]) == 0 {
 		return ErrMacInvalid
 	}
 
 	// Deserialize
-	if err := s.sz.Deserialize(body[timeLen:], dest); err != nil {
+	if err := s.sz.Deserialize(body, dest); err != nil {
 		return cookieError{cause: err, typ: decodeError}
 	}
 
 	return nil
 }
 
-var macPool = sync.Pool{New: func() interface{} {
-	hsh, _ := blake2s.New256(nil)
-	return &macbuf{Hash: hsh}
-}}
-
 type macbuf struct {
 	hash.Hash
-	buf [3 + nameMaxLen]byte
-	sum [32]byte
+	nameLen [4]byte
+	sum     [16]byte
 }
 
 func (m *macbuf) Reset() {
 	m.Hash.Reset()
-	m.buf = [3 + nameMaxLen]byte{}
-	m.sum = [32]byte{}
+	m.sum = [16]byte{}
 }
 
-func (s *SecureCookie) compactMac(version byte, name string, body, mac []byte) {
-	enc := macPool.Get().(*macbuf)
+func (s *SecureCookie) compactMac(header []byte, name string, body, mac []byte) {
+	enc := s.macPool.Get().(*macbuf)
 
-	// While it is not "recommended" way to mix key in, it is still valid
-	// because 1) Blake2b is not susceptible to length-extention attack, 2)
-	// "recommended" way does almost same, just stores key length in other place
-	// (it mixes length into constan iv itself).
-	enc.buf[0] = version
-	// name should not be longer than 127 bytes to fallback to varint in a future
-	enc.buf[1] = byte(len(name))
-	enc.buf[2] = keyLen
-	copy(enc.buf[3:], name)
-
-	_, _ = enc.Write(enc.buf[:3+len(name)])
-	_, _ = enc.Write(s.hashKey[:])
+	binary.BigEndian.PutUint32(enc.nameLen[:], uint32(len(name)))
+	_, _ = enc.Write(header)
+	_, _ = enc.Write(enc.nameLen[:])
+	_, _ = enc.Write([]byte(name))
 	_, _ = enc.Write(body)
 
 	copy(mac, enc.Sum(enc.sum[:0]))
 
 	enc.Reset()
-	macPool.Put(enc)
+	s.macPool.Put(enc)
 }
 
-func (s *SecureCookie) compactXorStream(tag, body []byte) {
+func (s *SecureCookie) compactXorStream(nonce, body []byte) {
 	if len(s.blockKey) == 0 { // no blockKey - no encryption
 		return
 	}
-	key := s.compactBlockKey
-	// Mix remaining tag bytes into key.
-	// We may do it because ChaCha20 has no related keys issues.
-	key[29] ^= tag[12]
-	key[30] ^= tag[13]
-	key[31] ^= tag[14]
-	stream, err := chacha20.NewUnauthenticatedCipher(key[:], tag[:12])
+	stream, err := chacha20.NewUnauthenticatedCipher(s.compactBlockKey[:], nonce)
 	if err != nil {
 		panic("stream initialization failed")
 	}
 	stream.XORKeyStream(body, body)
 }
 
+// timeShift ensures high byte is zero to use it for version
 func timeShift(t int64) int64 {
-	return t >> 16
+	return t >> 8
 }
 
-func timeValid(t int64) bool {
-	return (t >> (64 - 16)) == 0
+// timeUnshift restores timestamp to nanoseconds + clears high byte
+func timeUnshift(t int64) int64 {
+	return t << 8
 }
 
-func secsShift(t int64) int64 {
-	return (t * 1000000000) >> 16
+func secs2nano(t int64) int64 {
+	return t * 1000000000
 }

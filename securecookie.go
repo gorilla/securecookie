@@ -20,6 +20,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -104,7 +105,6 @@ var (
 	errDecryptionFailed      = cookieError{typ: decodeError, msg: "the value could not be decrypted"}
 	errValueNotByte          = cookieError{typ: decodeError, msg: "value not a []byte."}
 	errValueNotBytePtr       = cookieError{typ: decodeError, msg: "value not a pointer to []byte."}
-	errNameTooLong           = cookieError{typ: usageError, msg: "cookie name is too long"}
 	errValueToDecodeTooShort = cookieError{typ: decodeError, msg: "the value is too short"}
 	errVersionDoesntMatch    = cookieError{typ: decodeError, msg: "value version unknown"}
 
@@ -151,7 +151,7 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 	if blockKey != nil {
 		s.BlockFunc(aes.NewCipher)
 	}
-	s.prepareCompactKeys()
+	s.prepareCompact()
 	return s
 }
 
@@ -168,8 +168,8 @@ type SecureCookie struct {
 	err       error
 	sz        Serializer
 
-	compactHashKey  [keyLen]byte
 	compactBlockKey [keyLen]byte
+	macPool         sync.Pool
 	genCompact      bool
 }
 
