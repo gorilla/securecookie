@@ -47,8 +47,7 @@ func (s *SecureCookie) encodeCompact(name string, serialized []byte) (string, er
 	copy(body, serialized)
 
 	header, mac := macHeader[:headerLen], macHeader[headerLen:]
-	binary.BigEndian.PutUint64(header, uint64(timeShift(timestampNano())))
-	header[0] = version // it is made free in timestamp
+	composeHeader(version, timestampNano(), header)
 
 	// Mac
 	s.compactMac(header, name, body, mac)
@@ -74,13 +73,13 @@ func (s *SecureCookie) decodeCompact(name string, encoded string, dest interface
 	header, mac := macHeader[:headerLen], macHeader[headerLen:]
 
 	// Decompose
-	if header[0] != version {
+	v, ts := decomposeHeader(header)
+	if v != version {
 		// there is only version currently
 		return errVersionDoesntMatch
 	}
 
 	// Check time
-	ts := timeUnshift(int64(binary.BigEndian.Uint64(header)))
 	now := timestampNano()
 	if s.maxAge > 0 && ts+secs2nano(s.maxAge) < now {
 		return errTimestampExpired
@@ -144,14 +143,17 @@ func (s *SecureCookie) compactXorStream(nonce, body []byte) {
 	stream.XORKeyStream(body, body)
 }
 
-// timeShift ensures high byte is zero to use it for version
-func timeShift(t int64) int64 {
-	return t >> 8
+func composeHeader(v byte, t int64, header []byte) {
+	ut := uint64(t) >> 8 // clear highest octet for version
+	binary.BigEndian.PutUint64(header, ut)
+	header[0] = v
 }
 
-// timeUnshift restores timestamp to nanoseconds + clears high byte
-func timeUnshift(t int64) int64 {
-	return t << 8
+func decomposeHeader(header []byte) (v byte, t int64) {
+	v = header[0]
+	ut := binary.BigEndian.Uint64(header)
+	t = int64(ut << 8)
+	return
 }
 
 func secs2nano(t int64) int64 {
