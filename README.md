@@ -64,7 +64,7 @@ value:
 func ReadCookieHandler(w http.ResponseWriter, r *http.Request) {
 	if cookie, err := r.Cookie("cookie-name"); err == nil {
 		value := make(map[string]string)
-		if err = s2.Decode("cookie-name", cookie.Value, &value); err == nil {
+		if err = s.Decode("cookie-name", cookie.Value, &value); err == nil {
 			fmt.Fprintf(w, "The value of foo is %q", value["foo"])
 		}
 	}
