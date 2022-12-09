@@ -3,6 +3,12 @@
 [![GoDoc](https://godoc.org/github.com/gorilla/securecookie?status.svg)](https://godoc.org/github.com/gorilla/securecookie) [![Build Status](https://travis-ci.org/gorilla/securecookie.png?branch=master)](https://travis-ci.org/gorilla/securecookie)
 [![Sourcegraph](https://sourcegraph.com/github.com/gorilla/securecookie/-/badge.svg)](https://sourcegraph.com/github.com/gorilla/securecookie?badge)
 
+---
+
+**The Gorilla project has been archived, and is no longer under active maintainenance. You can read more here: https://github.com/gorilla#gorilla-toolkit**
+
+---
+
 securecookie encodes and decodes authenticated and optionally encrypted
 cookie values.
 
