@@ -13,6 +13,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	fuzz "github.com/google/gofuzz"
 )
 
 // Asserts that cookieError and MultiError are Error implementations.
@@ -238,7 +240,7 @@ func TestMultiError(t *testing.T) {
 	if len(err.(MultiError)) != 2 {
 		t.Errorf("Expected 2 errors, got %s.", err)
 	} else {
-		if strings.Index(err.Error(), "hash key is not set") == -1 {
+		if !strings.Contains(err.Error(), "hash key is not set") {
 			t.Errorf("Expected missing hash key error, got %s.", err.Error())
 		}
 		ourErr, ok := err.(Error)
@@ -305,4 +307,38 @@ func TestCustomType(t *testing.T) {
 	if dst.Foo != 42 || dst.Bar != "bar" {
 		t.Fatalf("Expected %#v, got %#v", src, dst)
 	}
+}
+
+type Cookie struct {
+	B bool
+	I int
+	S string
+}
+
+func FuzzEncodeDecode(f *testing.F) {
+	fuzzer := fuzz.New()
+	s1 := New([]byte("12345"), []byte("1234567890123456"))
+	s1.maxLength = 0
+
+	for i := 0; i < 100000; i++ {
+		var c Cookie
+		fuzzer.Fuzz(&c)
+		f.Add(c.B, c.I, c.S)
+	}
+
+	f.Fuzz(func(t *testing.T, b bool, i int, s string) {
+		c := Cookie{b, i, s}
+		encoded, err := s1.Encode("sid", c)
+		if err != nil {
+			t.Errorf("Encode failed: %v", err)
+		}
+		dc := Cookie{}
+		err = s1.Decode("sid", encoded, &dc)
+		if err != nil {
+			t.Errorf("Decode failed: %v", err)
+		}
+		if dc != c {
+			t.Fatalf("Expected %v, got %v.", s, dc)
+		}
+	})
 }

@@ -286,7 +286,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	b = encode(b)
 	// 5. Check length.
 	if s.maxLength != 0 && len(b) > s.maxLength {
-		return "", errEncodedValueTooLong
+		return "", fmt.Errorf("%s: %d", errEncodedValueTooLong, len(b))
 	}
 	// Done.
 	return string(b), nil
@@ -310,7 +310,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	}
 	// 1. Check length.
 	if s.maxLength != 0 && len(value) > s.maxLength {
-		return errValueToDecodeTooLong
+		return fmt.Errorf("%s: %d", errValueToDecodeTooLong, len(value))
 	}
 	// 2. Decode from base64.
 	b, err := decode([]byte(value))
@@ -529,22 +529,21 @@ func GenerateRandomKey(length int) []byte {
 //
 // Example:
 //
-//      codecs := securecookie.CodecsFromPairs(
-//           []byte("new-hash-key"),
-//           []byte("new-block-key"),
-//           []byte("old-hash-key"),
-//           []byte("old-block-key"),
-//       )
+//	codecs := securecookie.CodecsFromPairs(
+//	     []byte("new-hash-key"),
+//	     []byte("new-block-key"),
+//	     []byte("old-hash-key"),
+//	     []byte("old-block-key"),
+//	 )
 //
-//      // Modify each instance.
-//      for _, s := range codecs {
-//             if cookie, ok := s.(*securecookie.SecureCookie); ok {
-//                 cookie.MaxAge(86400 * 7)
-//                 cookie.SetSerializer(securecookie.JSONEncoder{})
-//                 cookie.HashFunc(sha512.New512_256)
-//             }
-//         }
-//
+//	// Modify each instance.
+//	for _, s := range codecs {
+//	       if cookie, ok := s.(*securecookie.SecureCookie); ok {
+//	           cookie.MaxAge(86400 * 7)
+//	           cookie.SetSerializer(securecookie.JSONEncoder{})
+//	           cookie.HashFunc(sha512.New512_256)
+//	       }
+//	   }
 func CodecsFromPairs(keyPairs ...[]byte) []Codec {
 	codecs := make([]Codec, len(keyPairs)/2+len(keyPairs)%2)
 	for i := 0; i < len(keyPairs); i += 2 {
