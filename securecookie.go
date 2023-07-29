@@ -391,7 +391,7 @@ func verifyMac(h hash.Hash, value []byte, mac []byte) error {
 
 // encrypt encrypts a value using the given block in counter mode.
 //
-// A random initialization vector (http://goo.gl/zF67k) with the length of the
+// A random initialization vector ( https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Initialization_vector_(IV) ) with the length of the
 // block size is prepended to the resulting ciphertext.
 func encrypt(block cipher.Block, value []byte) ([]byte, error) {
 	iv := GenerateRandomKey(block.BlockSize())
@@ -408,7 +408,7 @@ func encrypt(block cipher.Block, value []byte) ([]byte, error) {
 // decrypt decrypts a value using the given block in counter mode.
 //
 // The value to be decrypted must be prepended by a initialization vector
-// (http://goo.gl/zF67k) with the length of the block size.
+// ( https://en.wikipedia.org/wiki/Block_cipher_mode_of_operation#Initialization_vector_(IV) ) with the length of the block size.
 func decrypt(block cipher.Block, value []byte) ([]byte, error) {
 	size := block.BlockSize()
 	if len(value) > size {
