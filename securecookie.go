@@ -188,6 +188,13 @@ type JSONEncoder struct{}
 // you encoding an object upstream and do not wish to re-encode it.
 type NopEncoder struct{}
 
+// Err returns any configuration error that occurred during New or subsequent
+// setup calls (e.g., BlockFunc). If Err returns non-nil, all Encode and Decode
+// calls will fail with this error.
+func (s *SecureCookie) Err() error {
+	return s.err
+}
+
 // MaxLength restricts the maximum length, in bytes, for the cookie value.
 //
 // Default is 4096, which is the maximum value accepted by Internet Explorer.
