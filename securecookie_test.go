@@ -88,6 +88,18 @@ func TestSecureCookieNilKey(t *testing.T) {
 	}
 }
 
+func TestErr(t *testing.T) {
+	if err := New([]byte("12345678901234567890123456789012"), nil).Err(); err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if err := New(nil, nil).Err(); err != errHashKeyNotSet {
+		t.Fatalf("expected errHashKeyNotSet, got %v", err)
+	}
+	if err := New([]byte("12345678901234567890123456789012"), []byte("bad")).Err(); err == nil {
+		t.Fatal("expected an error for invalid block key, got nil")
+	}
+}
+
 func TestDecodeInvalid(t *testing.T) {
 	// List of invalid cookies, which must not be accepted, base64-decoded
 	// (they will be encoded before passing to Decode).
