@@ -234,6 +234,13 @@ func (s *SecureCookie) BlockFunc(f func([]byte) (cipher.Block, error)) *SecureCo
 	return s
 }
 
+// Err returns an error if the SecureCookie was misconfigured, for example when
+// New was called with an invalid hash or block key. It returns nil if the
+// instance is usable. Encode and Decode also report this error.
+func (s *SecureCookie) Err() error {
+	return s.err
+}
+
 // Encoding sets the encoding/serialization method for cookies.
 //
 // Default is encoding/gob.  To encode special structures using encoding/gob,
