@@ -244,6 +244,14 @@ func (s *SecureCookie) SetSerializer(sz Serializer) *SecureCookie {
 	return s
 }
 
+// Err returns the deferred error stored on s during New or BlockFunc. It's
+// the same error every subsequent Encode or Decode call would surface. This
+// lets callers fail fast when configuration is wrong instead of waiting for
+// the first cookie to be processed.
+func (s *SecureCookie) Err() error {
+	return s.err
+}
+
 // Encode encodes a cookie value.
 //
 // It serializes, optionally encrypts, signs with a message authentication code,
