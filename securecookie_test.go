@@ -342,3 +342,46 @@ func FuzzEncodeDecode(f *testing.F) {
 		}
 	})
 }
+
+func TestGenerateRandomKey(t *testing.T) {
+	for _, length := range []int{16, 24, 32, 64} {
+		k1 := GenerateRandomKey(length)
+		if len(k1) != length {
+			t.Fatalf("expected key length %d, got %d", length, len(k1))
+		}
+		k2 := GenerateRandomKey(length)
+		if reflect.DeepEqual(k1, k2) {
+			t.Fatalf("expected keys to be distinct random sequences")
+		}
+	}
+}
+
+func TestNopEncoder(t *testing.T) {
+	enc := NopEncoder{}
+	raw := []byte("hello gorilla")
+	serialized, err := enc.Serialize(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(serialized, raw) {
+		t.Fatalf("expected serialized bytes %v, got %v", raw, serialized)
+	}
+
+	_, err = enc.Serialize("not a byte slice")
+	if err != errValueNotByte {
+		t.Fatalf("expected errValueNotByte, got %v", err)
+	}
+
+	var dst []byte
+	if err := enc.Deserialize(serialized, &dst); err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(dst, raw) {
+		t.Fatalf("expected deserialized bytes %v, got %v", raw, dst)
+	}
+
+	var notBytePtr string
+	if err := enc.Deserialize(serialized, &notBytePtr); err != errValueNotBytePtr {
+		t.Fatalf("expected errValueNotBytePtr, got %v", err)
+	}
+}
