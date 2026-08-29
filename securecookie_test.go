@@ -131,6 +131,21 @@ func TestAuthentication(t *testing.T) {
 	}
 }
 
+func TestEncryptDoesNotMutateInput(t *testing.T) {
+	block, err := aes.NewCipher([]byte("1234567890123456"))
+	if err != nil {
+		t.Fatalf("Block could not be created")
+	}
+	orig := []byte("hello world")
+	clone := append([]byte(nil), orig...)
+	if _, err := encrypt(block, orig); err != nil {
+		t.Fatal(err)
+	}
+	if string(orig) != string(clone) {
+		t.Fatalf("encrypt mutated input: got %q want %q", orig, clone)
+	}
+}
+
 func TestEncryption(t *testing.T) {
 	block, err := aes.NewCipher([]byte("1234567890123456"))
 	if err != nil {
