@@ -88,6 +88,29 @@ func TestSecureCookieNilKey(t *testing.T) {
 	}
 }
 
+func TestNewError(t *testing.T) {
+	if err := New([]byte("12345"), nil).Error(); err != nil {
+		t.Fatalf("valid hash-only cookie: %v", err)
+	}
+	if err := New([]byte("12345"), []byte("1234567890123456")).Error(); err != nil {
+		t.Fatalf("valid hash+block cookie: %v", err)
+	}
+	if err := New(nil, nil).Error(); err != errHashKeyNotSet {
+		t.Fatalf("empty hash key: got %v", err)
+	}
+	if err := New([]byte(""), nil).Error(); err != errHashKeyNotSet {
+		t.Fatalf("empty string hash key: got %v", err)
+	}
+	// []byte{} is non-nil, so New still installs AES; key size 0 is invalid.
+	s := New([]byte("12345"), []byte{})
+	if s.Error() == nil {
+		t.Fatal("empty block key: expected error")
+	}
+	if err2, ok := s.Error().(Error); !ok || !err2.IsUsage() {
+		t.Fatalf("empty block key: expected usage Error, got %#v", s.Error())
+	}
+}
+
 func TestDecodeInvalid(t *testing.T) {
 	// List of invalid cookies, which must not be accepted, base64-decoded
 	// (they will be encoded before passing to Decode).

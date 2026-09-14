@@ -150,6 +150,13 @@ func New(hashKey, blockKey []byte) *SecureCookie {
 	return s
 }
 
+// Error returns any usage error recorded while constructing this
+// SecureCookie, such as a missing hash key or an invalid block key.
+// Encode and Decode also return this error. It is nil after a successful New.
+func (s *SecureCookie) Error() error {
+	return s.err
+}
+
 // SecureCookie encodes and decodes authenticated and optionally encrypted
 // cookie values.
 type SecureCookie struct {
