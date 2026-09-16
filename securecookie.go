@@ -398,11 +398,12 @@ func encrypt(block cipher.Block, value []byte) ([]byte, error) {
 	if iv == nil {
 		return nil, errGeneratingIV
 	}
-	// Encrypt it.
+	// Copy so XORKeyStream does not mutate the caller's plaintext.
+	dst := make([]byte, len(value))
 	stream := cipher.NewCTR(block, iv)
-	stream.XORKeyStream(value, value)
+	stream.XORKeyStream(dst, value)
 	// Return iv + ciphertext.
-	return append(iv, value...), nil
+	return append(iv, dst...), nil
 }
 
 // decrypt decrypts a value using the given block in counter mode.
@@ -412,14 +413,14 @@ func encrypt(block cipher.Block, value []byte) ([]byte, error) {
 func decrypt(block cipher.Block, value []byte) ([]byte, error) {
 	size := block.BlockSize()
 	if len(value) > size {
-		// Extract iv.
-		iv := value[:size]
-		// Extract ciphertext.
-		value = value[size:]
-		// Decrypt it.
+		// Copy IV and ciphertext so XORKeyStream does not mutate the caller's
+		// buffer (the IV+ciphertext slice passed in).
+		iv := make([]byte, size)
+		copy(iv, value[:size])
+		dst := make([]byte, len(value)-size)
 		stream := cipher.NewCTR(block, iv)
-		stream.XORKeyStream(value, value)
-		return value, nil
+		stream.XORKeyStream(dst, value[size:])
+		return dst, nil
 	}
 	return nil, errDecryptionFailed
 }

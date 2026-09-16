@@ -5,6 +5,7 @@
 package securecookie
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -266,6 +267,33 @@ func TestMultiNoCodecs(t *testing.T) {
 	err = DecodeMulti("foo", "bar", &dst)
 	if err != errNoCodecs {
 		t.Errorf("DecodeMulti: bad value for error, got: %v", err)
+	}
+}
+
+func TestEncryptDecryptDoesNotMutateInput(t *testing.T) {
+	block, err := aes.NewCipher([]byte("1234567890123456"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain := []byte("hello-securecookie")
+	plainCopy := append([]byte(nil), plain...)
+	enc, err := encrypt(block, plain)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(plain, plainCopy) {
+		t.Fatalf("encrypt mutated input: got %q want %q", plain, plainCopy)
+	}
+	encCopy := append([]byte(nil), enc...)
+	dec, err := decrypt(block, enc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(enc, encCopy) {
+		t.Fatalf("decrypt mutated input: got %q want %q", enc, encCopy)
+	}
+	if !bytes.Equal(dec, plainCopy) {
+		t.Fatalf("roundtrip: got %q want %q", dec, plainCopy)
 	}
 }
 
