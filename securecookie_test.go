@@ -342,3 +342,15 @@ func FuzzEncodeDecode(f *testing.F) {
 		}
 	})
 }
+
+func TestGenerateRandomKeyNonPositive(t *testing.T) {
+	if got := GenerateRandomKey(0); got != nil {
+		t.Fatalf("GenerateRandomKey(0)=%v, want nil", got)
+	}
+	if got := GenerateRandomKey(-1); got != nil {
+		t.Fatalf("GenerateRandomKey(-1)=%v, want nil", got)
+	}
+	if got := GenerateRandomKey(16); got == nil || len(got) != 16 {
+		t.Fatalf("GenerateRandomKey(16)=%v, want 16-byte key", got)
+	}
+}

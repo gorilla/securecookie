@@ -513,6 +513,9 @@ func decode(value []byte) ([]byte, error) {
 // Callers should explicitly check for the possibility of a nil return, treat
 // it as a failure of the system random number generator, and not continue.
 func GenerateRandomKey(length int) []byte {
+	if length <= 0 {
+		return nil
+	}
 	k := make([]byte, length)
 	if _, err := io.ReadFull(rand.Reader, k); err != nil {
 		return nil
