@@ -75,6 +75,16 @@ func (e cookieError) IsInternal() bool { return (e.typ & internalError) != 0 }
 
 func (e cookieError) Cause() error { return e.cause }
 
+func (e cookieError) Unwrap() error { return e.cause }
+
+func (e cookieError) Is(target error) bool {
+	t, ok := target.(cookieError)
+	if !ok {
+		return false
+	}
+	return e.typ == t.typ && e.msg == t.msg
+}
+
 func (e cookieError) Error() string {
 	parts := []string{"securecookie: "}
 	if e.msg == "" {
@@ -89,7 +99,9 @@ func (e cookieError) Error() string {
 }
 
 var (
-	errGeneratingIV = cookieError{typ: internalError, msg: "failed to generate random iv"}
+	errGeneratingIV        = cookieError{typ: internalError, msg: "failed to generate random iv"}
+	errGeneratingKey       = cookieError{typ: internalError, msg: "failed to generate random key"}
+	errInvalidKeyLength    = cookieError{typ: usageError, msg: "invalid key length"}
 
 	errNoCodecs            = cookieError{typ: usageError, msg: "no codecs provided"}
 	errHashKeyNotSet       = cookieError{typ: usageError, msg: "hash key is not set"}
@@ -503,6 +515,24 @@ func decode(value []byte) ([]byte, error) {
 
 // Helpers --------------------------------------------------------------------
 
+// GenerateRandomKeySafe creates a random key with the given length in bytes.
+// It returns an error if the key length is invalid or if reading from the
+// system CSPRNG fails.
+//
+// Keys created using GenerateRandomKeySafe are not automatically persisted.
+// New keys will be created when the application is restarted, and
+// previously issued cookies will not decode.
+func GenerateRandomKeySafe(length int) ([]byte, error) {
+	if length < 0 {
+		return nil, errInvalidKeyLength
+	}
+	k := make([]byte, length)
+	if _, err := io.ReadFull(rand.Reader, k); err != nil {
+		return nil, cookieError{cause: err, typ: internalError, msg: "failed to generate random key"}
+	}
+	return k, nil
+}
+
 // GenerateRandomKey creates a random key with the given length in bytes.
 // On failure, returns nil.
 //
@@ -512,9 +542,10 @@ func decode(value []byte) ([]byte, error) {
 //
 // Callers should explicitly check for the possibility of a nil return, treat
 // it as a failure of the system random number generator, and not continue.
+// For explicit error handling, use GenerateRandomKeySafe instead.
 func GenerateRandomKey(length int) []byte {
-	k := make([]byte, length)
-	if _, err := io.ReadFull(rand.Reader, k); err != nil {
+	k, err := GenerateRandomKeySafe(length)
+	if err != nil {
 		return nil
 	}
 	return k

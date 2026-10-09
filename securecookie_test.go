@@ -5,11 +5,15 @@
 package securecookie
 
 import (
+	"bytes"
 	"crypto/aes"
 	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"testing"
@@ -342,3 +346,173 @@ func FuzzEncodeDecode(f *testing.F) {
 		}
 	})
 }
+
+type errorRandReader struct {
+	err error
+}
+
+func (r *errorRandReader) Read(p []byte) (n int, err error) {
+	return 0, r.err
+}
+
+type partialRandReader struct {
+	allowed int
+	err     error
+}
+
+func (r *partialRandReader) Read(p []byte) (n int, err error) {
+	if r.allowed <= 0 {
+		return 0, r.err
+	}
+	n = len(p)
+	if n > r.allowed {
+		n = r.allowed
+	}
+	for i := 0; i < n; i++ {
+		p[i] = byte(i + 1)
+	}
+	r.allowed -= n
+	return n, nil
+}
+
+func TestGenerateRandomKeySafe(t *testing.T) {
+	for _, length := range []int{16, 24, 32, 64} {
+		key1, err := GenerateRandomKeySafe(length)
+		if err != nil {
+			t.Fatalf("GenerateRandomKeySafe(%d) returned error: %v", length, err)
+		}
+		if len(key1) != length {
+			t.Fatalf("GenerateRandomKeySafe(%d) returned key length %d, want %d", length, len(key1), length)
+		}
+
+		key2, err := GenerateRandomKeySafe(length)
+		if err != nil {
+			t.Fatalf("GenerateRandomKeySafe(%d) second call returned error: %v", length, err)
+		}
+		if bytes.Equal(key1, key2) {
+			t.Fatalf("GenerateRandomKeySafe(%d) returned identical keys across calls", length)
+		}
+	}
+
+	keyZero, err := GenerateRandomKeySafe(0)
+	if err != nil {
+		t.Fatalf("GenerateRandomKeySafe(0) returned error: %v", err)
+	}
+	if len(keyZero) != 0 {
+		t.Fatalf("GenerateRandomKeySafe(0) length = %d, want 0", len(keyZero))
+	}
+}
+
+func TestGenerateRandomKeySafeInvalidLength(t *testing.T) {
+	for _, length := range []int{-1, -16} {
+		key, err := GenerateRandomKeySafe(length)
+		if key != nil {
+			t.Fatalf("GenerateRandomKeySafe(%d) returned non-nil key", length)
+		}
+		if err == nil {
+			t.Fatalf("GenerateRandomKeySafe(%d) expected error, got nil", length)
+		}
+		if !errors.Is(err, errInvalidKeyLength) {
+			t.Fatalf("GenerateRandomKeySafe(%d) error = %v, want errInvalidKeyLength", length, err)
+		}
+		cookieErr, ok := err.(Error)
+		if !ok {
+			t.Fatalf("GenerateRandomKeySafe(%d) error does not implement Error interface", length)
+		}
+		if !cookieErr.IsUsage() {
+			t.Fatalf("GenerateRandomKeySafe(%d) error.IsUsage() = false, want true", length)
+		}
+		if cookieErr.IsInternal() {
+			t.Fatalf("GenerateRandomKeySafe(%d) error.IsInternal() = true, want false", length)
+		}
+		if cookieErr.IsDecode() {
+			t.Fatalf("GenerateRandomKeySafe(%d) error.IsDecode() = true, want false", length)
+		}
+	}
+}
+
+func TestGenerateRandomKeySafeReaderError(t *testing.T) {
+	origReader := rand.Reader
+	defer func() { rand.Reader = origReader }()
+
+	injectedErr := errors.New("simulated csprng read failure")
+	rand.Reader = &errorRandReader{err: injectedErr}
+
+	key, err := GenerateRandomKeySafe(32)
+	if key != nil {
+		t.Fatalf("expected nil key on reader error, got %v", key)
+	}
+	if err == nil {
+		t.Fatal("expected error on reader error, got nil")
+	}
+	if !errors.Is(err, injectedErr) {
+		t.Fatalf("errors.Is(err, injectedErr) = false, err = %v", err)
+	}
+	if !errors.Is(err, errGeneratingKey) {
+		t.Fatalf("errors.Is(err, errGeneratingKey) = false, err = %v", err)
+	}
+
+	cookieErr, ok := err.(Error)
+	if !ok {
+		t.Fatalf("error does not implement Error interface: %#v", err)
+	}
+	if !cookieErr.IsInternal() {
+		t.Fatalf("cookieErr.IsInternal() = false, want true")
+	}
+	if cookieErr.IsUsage() {
+		t.Fatalf("cookieErr.IsUsage() = true, want false")
+	}
+	if cookieErr.IsDecode() {
+		t.Fatalf("cookieErr.IsDecode() = true, want false")
+	}
+	if cookieErr.Cause() != injectedErr {
+		t.Fatalf("cookieErr.Cause() = %v, want %v", cookieErr.Cause(), injectedErr)
+	}
+}
+
+func TestGenerateRandomKeySafePartialReadError(t *testing.T) {
+	origReader := rand.Reader
+	defer func() { rand.Reader = origReader }()
+
+	rand.Reader = &partialRandReader{allowed: 10, err: io.ErrUnexpectedEOF}
+
+	key, err := GenerateRandomKeySafe(32)
+	if key != nil {
+		t.Fatalf("expected nil key on partial read error, got %v", key)
+	}
+	if err == nil {
+		t.Fatal("expected error on partial read error, got nil")
+	}
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("errors.Is(err, io.ErrUnexpectedEOF) = false, err = %v", err)
+	}
+	cookieErr, ok := err.(Error)
+	if !ok {
+		t.Fatalf("error does not implement Error interface: %#v", err)
+	}
+	if !cookieErr.IsInternal() {
+		t.Fatalf("cookieErr.IsInternal() = false, want true")
+	}
+}
+
+func TestGenerateRandomKey(t *testing.T) {
+	key := GenerateRandomKey(32)
+	if len(key) != 32 {
+		t.Fatalf("GenerateRandomKey(32) length = %d, want 32", len(key))
+	}
+
+	keyNegative := GenerateRandomKey(-1)
+	if keyNegative != nil {
+		t.Fatalf("GenerateRandomKey(-1) returned non-nil key: %v", keyNegative)
+	}
+
+	origReader := rand.Reader
+	defer func() { rand.Reader = origReader }()
+
+	rand.Reader = &errorRandReader{err: errors.New("read error")}
+	keyFailed := GenerateRandomKey(32)
+	if keyFailed != nil {
+		t.Fatalf("GenerateRandomKey(32) with failed reader returned non-nil key: %v", keyFailed)
+	}
+}
+
