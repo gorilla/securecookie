@@ -132,6 +132,9 @@ type Codec interface {
 // Note that keys created using GenerateRandomKey() are not automatically
 // persisted. New keys will be created when the application is restarted, and
 // previously issued cookies will not be able to be decoded.
+//
+// Callers can check for configuration errors (e.g. invalid key sizes) using
+// the Err method.
 func New(hashKey, blockKey []byte) *SecureCookie {
 	s := &SecureCookie{
 		hashKey:   hashKey,
@@ -225,13 +228,30 @@ func (s *SecureCookie) HashFunc(f func() hash.Hash) *SecureCookie {
 // Default is crypto/aes.New.
 func (s *SecureCookie) BlockFunc(f func([]byte) (cipher.Block, error)) *SecureCookie {
 	if s.blockKey == nil {
+		s.block = nil
 		s.err = errBlockKeyNotSet
 	} else if block, err := f(s.blockKey); err == nil {
 		s.block = block
+		if len(s.hashKey) == 0 {
+			s.err = errHashKeyNotSet
+		} else {
+			s.err = nil
+		}
 	} else {
+		s.block = nil
 		s.err = cookieError{cause: err, typ: usageError}
 	}
 	return s
+}
+
+// Err returns any configuration error that occurred during initialization or
+// subsequent configuration calls (such as BlockFunc). If Err returns a non-nil
+// error, Encode and Decode calls will fail with that error.
+func (s *SecureCookie) Err() error {
+	if s == nil {
+		return nil
+	}
+	return s.err
 }
 
 // Encoding sets the encoding/serialization method for cookies.
@@ -260,7 +280,7 @@ func (s *SecureCookie) Encode(name string, value interface{}) (string, error) {
 	if s.err != nil {
 		return "", s.err
 	}
-	if s.hashKey == nil {
+	if len(s.hashKey) == 0 {
 		s.err = errHashKeyNotSet
 		return "", s.err
 	}
@@ -304,7 +324,7 @@ func (s *SecureCookie) Decode(name, value string, dst interface{}) error {
 	if s.err != nil {
 		return s.err
 	}
-	if s.hashKey == nil {
+	if len(s.hashKey) == 0 {
 		s.err = errHashKeyNotSet
 		return s.err
 	}

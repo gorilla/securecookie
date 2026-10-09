@@ -6,9 +6,12 @@ package securecookie
 
 import (
 	"crypto/aes"
+	"crypto/cipher"
+	"crypto/des"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -85,6 +88,100 @@ func TestSecureCookieNilKey(t *testing.T) {
 	_, err := s1.Encode("sid", value)
 	if err != errHashKeyNotSet {
 		t.Fatal("Wrong error returned:", err)
+	}
+}
+
+func TestErr(t *testing.T) {
+	validHashKey := []byte("01234567890123456789012345678901")
+	validBlockKey16 := []byte("0123456789012345")
+	validBlockKey24 := []byte("012345678901234567890123")
+	validBlockKey32 := []byte("01234567890123456789012345678901")
+
+	// Valid configurations should report nil error.
+	validCases := []*SecureCookie{
+		New(validHashKey, nil),
+		New(validHashKey, validBlockKey16),
+		New(validHashKey, validBlockKey24),
+		New(validHashKey, validBlockKey32),
+	}
+	for i, sc := range validCases {
+		if err := sc.Err(); err != nil {
+			t.Fatalf("case %d: expected nil error, got %v", i, err)
+		}
+	}
+
+	// Nil instance returns nil.
+	var nilCookie *SecureCookie
+	if err := nilCookie.Err(); err != nil {
+		t.Fatalf("expected nil error for nil instance, got %v", err)
+	}
+
+	// Missing or empty hash keys.
+	for _, key := range [][]byte{nil, []byte("")} {
+		sc := New(key, nil)
+		if err := sc.Err(); err != errHashKeyNotSet {
+			t.Fatalf("expected errHashKeyNotSet, got %v", err)
+		}
+		if scErr, ok := sc.Err().(Error); !ok || !scErr.IsUsage() {
+			t.Fatalf("expected usage error, got %#v", sc.Err())
+		}
+	}
+
+	// Empty block key passed as non-nil slice (issue #89).
+	emptyBlockCookie := New(validHashKey, []byte{})
+	if err := emptyBlockCookie.Err(); err == nil {
+		t.Fatal("expected error for empty block key, got nil")
+	} else if scErr, ok := err.(Error); !ok || !scErr.IsUsage() {
+		t.Fatalf("expected usage error for empty block key, got %#v", err)
+	}
+
+	// Invalid AES block key size.
+	invalidBlockCookie := New(validHashKey, []byte("short"))
+	if err := invalidBlockCookie.Err(); err == nil {
+		t.Fatal("expected error for invalid block key size, got nil")
+	} else if scErr, ok := err.(Error); !ok || !scErr.IsUsage() {
+		t.Fatalf("expected usage error for invalid block key size, got %#v", err)
+	}
+
+	// Calling BlockFunc without a block key.
+	scNoBlock := New(validHashKey, nil)
+	scNoBlock.BlockFunc(aes.NewCipher)
+	if err := scNoBlock.Err(); err != errBlockKeyNotSet {
+		t.Fatalf("expected errBlockKeyNotSet, got %v", err)
+	}
+
+	// Calling BlockFunc with failing cipher constructor.
+	cipherErr := errors.New("cipher init failed")
+	scCustomFail := New(validHashKey, validBlockKey16)
+	scCustomFail.BlockFunc(func([]byte) (cipher.Block, error) {
+		return nil, cipherErr
+	})
+	if err := scCustomFail.Err(); err == nil {
+		t.Fatal("expected error from failing BlockFunc")
+	} else if scErr, ok := err.(Error); !ok || scErr.Cause() != cipherErr {
+		t.Fatalf("expected cause to be cipherErr, got %#v", err)
+	}
+
+	// Initializing with non-AES block key length and recovering via compatible BlockFunc.
+	desKey := []byte("12345678")
+	scRecover := New(validHashKey, desKey)
+	if err := scRecover.Err(); err == nil {
+		t.Fatal("expected initial AES error for 8-byte key")
+	}
+	scRecover.BlockFunc(des.NewCipher)
+	if err := scRecover.Err(); err != nil {
+		t.Fatalf("expected nil error after compatible BlockFunc, got %v", err)
+	}
+	encoded, err := scRecover.Encode("test", "hello")
+	if err != nil {
+		t.Fatalf("expected successful encode, got %v", err)
+	}
+	var decoded string
+	if err := scRecover.Decode("test", encoded, &decoded); err != nil {
+		t.Fatalf("expected successful decode, got %v", err)
+	}
+	if decoded != "hello" {
+		t.Fatalf("expected 'hello', got %q", decoded)
 	}
 }
 
